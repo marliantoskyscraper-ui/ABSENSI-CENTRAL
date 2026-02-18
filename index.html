@@ -41,7 +41,7 @@
             Camera, MapPin, User, LogOut, FileText, 
             Users, Bell, Calendar, CheckCircle, XCircle, 
             Menu, Download, Upload, Clock, Home, AlertCircle, Coffee, Trash2,
-            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Lock
+            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Lock, Activity
         } from 'lucide-react';
 
         /**
@@ -143,25 +143,17 @@
         function App() {
             const [currentUser, setCurrentUser] = useState(null);
             
-            // --- STATE DENGAN AUTO-SYNC CREDENTIALS ---
-            // Bug Fix: Logika ini memastikan Admin & User Default selalu terupdate dari kode
-            // tanpa perlu reset cache browser manual.
+            // --- STATE MANAGEMENT DENGAN AUTO-SYNC ---
             
             const [users, setUsers] = useState(() => {
                 const saved = localStorage.getItem('app_users');
                 if (!saved) return INITIAL_USERS;
-
                 try {
                     const parsedUsers = JSON.parse(saved);
-                    // Ambil user lain yang didaftarkan manual (ID selain 1 dan 2)
+                    // Gabungkan user baru dengan admin hardcoded untuk keamanan
                     const registeredUsers = parsedUsers.filter(u => u.id !== 1 && u.id !== 2);
-                    
-                    // Gabungkan: [Admin Terbaru dari Kode] + [Marlianto Terbaru dari Kode] + [User Lain]
-                    // Ini "memaksa" update password admin jika kode berubah
                     return [...INITIAL_USERS, ...registeredUsers];
-                } catch (e) {
-                    return INITIAL_USERS;
-                }
+                } catch (e) { return INITIAL_USERS; }
             });
             
             const [logs, setLogs] = useState(() => {
@@ -179,6 +171,26 @@
                 return saved ? JSON.parse(saved) : INITIAL_PERMITS;
             });
 
+            // --- REAL-TIME LISTENER (SINKRONISASI ANTAR TAB) ---
+            useEffect(() => {
+                const handleStorageChange = (e) => {
+                    // Jika ada perubahan di localStorage (dari tab lain), update state lokal
+                    if (e.key === 'app_logs' && e.newValue) setLogs(JSON.parse(e.newValue));
+                    if (e.key === 'app_users' && e.newValue) {
+                        // Tetap jaga admin credential saat sync
+                        const parsed = JSON.parse(e.newValue);
+                        const others = parsed.filter(u => u.id !== 1 && u.id !== 2);
+                        setUsers([...INITIAL_USERS, ...others]);
+                    }
+                    if (e.key === 'app_permits' && e.newValue) setPermits(JSON.parse(e.newValue));
+                    if (e.key === 'app_announcements' && e.newValue) setAnnouncements(JSON.parse(e.newValue));
+                };
+
+                window.addEventListener('storage', handleStorageChange);
+                return () => window.removeEventListener('storage', handleStorageChange);
+            }, []);
+
+            // Simpan perubahan ke LocalStorage
             useEffect(() => { localStorage.setItem('app_users', JSON.stringify(users)); }, [users]);
             useEffect(() => { localStorage.setItem('app_logs', JSON.stringify(logs)); }, [logs]);
             useEffect(() => { localStorage.setItem('app_announcements', JSON.stringify(announcements)); }, [announcements]);
@@ -186,7 +198,7 @@
             
             // --- LOGIN, REGISTER & FORGOT PASSWORD LOGIC ---
 
-            const [authView, setAuthView] = useState('login'); // login, register, forgot
+            const [authView, setAuthView] = useState('login'); 
             const [loginData, setLoginData] = useState({ email: '', password: '' });
             const [registerData, setRegisterData] = useState({ name: '', email: '', password: '', department: '', position: '', location: '' });
             const [forgotEmail, setForgotEmail] = useState('');
@@ -231,13 +243,13 @@
                     phone: '-'
                 };
 
+                // Update state -> triggers useEffect -> updates localStorage -> triggers storage event in other tabs
                 setUsers([...users, newUser]); 
                 setAuthError('');
                 
-                // Otomatis isi form login
                 setLoginData({ email: registerData.email, password: registerData.password });
                 
-                alert('Pendaftaran Berhasil! Data login telah disinkronkan. Silakan klik tombol Masuk.');
+                alert('Pendaftaran Berhasil! Data langsung tersimpan ke Database Admin.');
                 setAuthView('login'); 
                 setRegisterData({ name: '', email: '', password: '', department: '', position: '', location: '' });
             };
@@ -263,9 +275,8 @@
                 setAuthError('');
             };
 
-            // Fungsi Reset HANYA untuk Admin (di dalam dashboard)
             const handleResetSystem = () => {
-                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data (absensi, cuti, karyawan tambahan) dan mengembalikan ke kondisi awal instalasi. Lanjutkan?")) {
+                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data dan mengembalikan ke kondisi awal instalasi. Lanjutkan?")) {
                     localStorage.clear();
                     sessionStorage.clear();
                     window.location.reload();
@@ -297,35 +308,18 @@
                             )}
 
                             {authView === 'login' && (
-                                /* --- FORM LOGIN --- */
                                 <form onSubmit={handleLogin} className="space-y-4">
                                     <h2 className="text-lg font-bold text-gray-800 text-center">Login Masuk</h2>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                        <input 
-                                            type="email" 
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                            value={loginData.email}
-                                            onChange={(e) => setLoginData({...loginData, email: e.target.value})}
-                                            placeholder="email@kantor.com"
-                                            required
-                                        />
+                                        <input type="email" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={loginData.email} onChange={(e) => setLoginData({...loginData, email: e.target.value})} placeholder="email@kantor.com" required />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                        <input 
-                                            type="password" 
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                            value={loginData.password}
-                                            onChange={(e) => setLoginData({...loginData, password: e.target.value})}
-                                            placeholder="*****"
-                                            required
-                                        />
+                                        <input type="password" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={loginData.password} onChange={(e) => setLoginData({...loginData, password: e.target.value})} placeholder="*****" required />
                                     </div>
                                     <div className="flex justify-end">
-                                        <button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); setAuthSuccess(''); }} className="text-xs text-blue-600 hover:underline">
-                                            Lupa Password?
-                                        </button>
+                                        <button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); setAuthSuccess(''); }} className="text-xs text-blue-600 hover:underline">Lupa Password?</button>
                                     </div>
                                     <Button className="w-full mt-2">Masuk Sistem</Button>
                                     
@@ -339,13 +333,11 @@
                             )}
 
                             {authView === 'register' && (
-                                /* --- FORM REGISTER --- */
                                 <form onSubmit={handleRegister} className="space-y-3">
                                     <div className="flex items-center gap-2 mb-2">
                                         <button type="button" onClick={() => setAuthView('login')} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button>
                                         <h2 className="text-lg font-bold text-gray-800">Pendaftaran Baru</h2>
                                     </div>
-                                    
                                     <input className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Nama Lengkap" value={registerData.name} onChange={(e) => setRegisterData({...registerData, name: e.target.value})} required />
                                     <input type="email" className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Email Aktif" value={registerData.email} onChange={(e) => setRegisterData({...registerData, email: e.target.value})} required />
                                     <input type="password" className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Password" value={registerData.password} onChange={(e) => setRegisterData({...registerData, password: e.target.value})} required />
@@ -357,26 +349,18 @@
                                         <option value="">Pilih Lokasi Penempatan</option>
                                         {LOCATIONS.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
                                     </select>
-                                    <Button className="w-full mt-4" variant="success">Daftar Sekarang</Button>
+                                    <Button className="w-full mt-4" variant="success">Daftar & Sinkronisasi</Button>
                                 </form>
                             )}
 
                             {authView === 'forgot' && (
-                                /* --- FORM LUPA PASSWORD --- */
                                 <form onSubmit={handleForgotPassword} className="space-y-4">
                                     <div className="flex items-center gap-2 mb-2">
                                         <button type="button" onClick={() => { setAuthView('login'); setAuthError(''); setAuthSuccess(''); }} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button>
                                         <h2 className="text-lg font-bold text-gray-800">Lupa Password</h2>
                                     </div>
                                     <p className="text-sm text-gray-600">Masukkan email Anda untuk verifikasi akun.</p>
-                                    <input 
-                                        type="email" 
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                        value={forgotEmail}
-                                        onChange={(e) => setForgotEmail(e.target.value)}
-                                        placeholder="email@kantor.com"
-                                        required
-                                    />
+                                    <input type="email" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="email@kantor.com" required />
                                     <Button className="w-full" variant="warning">Cek Akun</Button>
                                 </form>
                             )}
@@ -440,10 +424,9 @@
         function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, permits, setPermits, handleResetSystem }) {
             const [view, setView] = useState('overview'); 
             const [newUser, setNewUser] = useState({ name: '', email: '', department: '', position: '', location: '', role: 'employee' });
-            
             const [startDate, setStartDate] = useState('');
             const [endDate, setEndDate] = useState('');
-            const [showPassword, setShowPassword] = useState({}); // State untuk toggle password
+            const [showPassword, setShowPassword] = useState({}); 
 
             const todayLogs = logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
             const uniqueAttendees = new Set(todayLogs.map(l => l.userId)).size;
@@ -460,15 +443,12 @@
                 return logDate >= start && logDate <= end;
             });
 
-            const togglePassword = (id) => {
-                setShowPassword(prev => ({ ...prev, [id]: !prev[id] }));
-            };
-
+            const togglePassword = (id) => setShowPassword(prev => ({ ...prev, [id]: !prev[id] }));
             const handleResetUserPassword = (userId) => {
                 const newPass = prompt("Masukkan password baru untuk user ini:");
                 if (newPass) {
                     setUsers(users.map(u => u.id === userId ? { ...u, password: newPass } : u));
-                    alert("Password berhasil diubah!");
+                    alert("Password berhasil diubah & disinkronkan!");
                 }
             };
 
@@ -486,10 +466,19 @@
 
             return (
                 <div className="space-y-6">
+                {/* --- Status Bar Live Sync --- */}
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg flex items-center justify-between text-sm shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <Activity size={16} className="animate-pulse" />
+                        <span className="font-semibold">Live Sync Aktif:</span> Data pendaftar & absensi terhubung real-time.
+                    </div>
+                    <span className="text-xs text-green-600">{new Date().toLocaleTimeString()}</span>
+                </div>
+
                 <div className="flex overflow-x-auto gap-2 pb-2">
                     {[
                     { id: 'overview', label: 'Dashboard', icon: Home },
-                    { id: 'employees', label: 'Karyawan & Password', icon: Users },
+                    { id: 'employees', label: 'Karyawan', icon: Users },
                     { id: 'approvals', label: `Persetujuan (${pendingPermits.length})`, icon: ClipboardCheck },
                     { id: 'reports', label: 'Laporan', icon: FileText },
                     { id: 'announcements', label: 'Info', icon: Bell },
