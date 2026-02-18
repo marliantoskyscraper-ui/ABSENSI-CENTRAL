@@ -143,54 +143,68 @@
         function App() {
             const [currentUser, setCurrentUser] = useState(null);
             
-            // --- STATE MANAGEMENT DENGAN AUTO-SYNC ---
+            // --- STATE MANAGEMENT DENGAN SMART SYNC ---
             
+            // Inisialisasi State (Load dari Storage atau Default)
             const [users, setUsers] = useState(() => {
-                const saved = localStorage.getItem('app_users');
-                if (!saved) return INITIAL_USERS;
                 try {
-                    const parsedUsers = JSON.parse(saved);
-                    // Gabungkan user baru dengan admin hardcoded untuk keamanan
-                    const registeredUsers = parsedUsers.filter(u => u.id !== 1 && u.id !== 2);
-                    return [...INITIAL_USERS, ...registeredUsers];
-                } catch (e) { return INITIAL_USERS; }
+                    const saved = localStorage.getItem('app_users');
+                    return saved ? JSON.parse(saved) : INITIAL_USERS;
+                } catch { return INITIAL_USERS; }
             });
             
-            const [logs, setLogs] = useState(() => {
-                const saved = localStorage.getItem('app_logs');
-                return saved ? JSON.parse(saved) : INITIAL_LOGS;
-            });
+            const [logs, setLogs] = useState(() => JSON.parse(localStorage.getItem('app_logs')) || INITIAL_LOGS);
+            const [announcements, setAnnouncements] = useState(() => JSON.parse(localStorage.getItem('app_announcements')) || INITIAL_ANNOUNCEMENTS);
+            const [permits, setPermits] = useState(() => JSON.parse(localStorage.getItem('app_permits')) || INITIAL_PERMITS);
 
-            const [announcements, setAnnouncements] = useState(() => {
-                const saved = localStorage.getItem('app_announcements');
-                return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
-            });
-
-            const [permits, setPermits] = useState(() => {
-                const saved = localStorage.getItem('app_permits');
-                return saved ? JSON.parse(saved) : INITIAL_PERMITS;
-            });
-
-            // --- REAL-TIME LISTENER (SINKRONISASI ANTAR TAB) ---
+            // --- REAL-TIME LISTENER & POLLING ---
             useEffect(() => {
-                const handleStorageChange = (e) => {
-                    // Jika ada perubahan di localStorage (dari tab lain), update state lokal
-                    if (e.key === 'app_logs' && e.newValue) setLogs(JSON.parse(e.newValue));
-                    if (e.key === 'app_users' && e.newValue) {
-                        // Tetap jaga admin credential saat sync
-                        const parsed = JSON.parse(e.newValue);
-                        const others = parsed.filter(u => u.id !== 1 && u.id !== 2);
-                        setUsers([...INITIAL_USERS, ...others]);
+                // 1. Migrasi Data Admin (Jika password kode berubah, update di storage tanpa hapus user lain)
+                const currentUsers = JSON.parse(localStorage.getItem('app_users')) || [];
+                const admin = currentUsers.find(u => u.id === 1);
+                
+                // Cek apakah data admin di storage usang/beda dengan kode
+                const adminCode = INITIAL_USERS[0];
+                if (!admin || admin.email !== adminCode.email || admin.password !== adminCode.password) {
+                    const updatedUsers = [
+                        adminCode, // Pakai data admin terbaru dari kode
+                        ...currentUsers.filter(u => u.id !== 1) // Pertahankan user lain
+                    ];
+                    // Jika Marlianto (ID 2) hilang, tambahkan kembali
+                    if (!updatedUsers.find(u => u.id === 2)) {
+                        updatedUsers.push(INITIAL_USERS[1]);
                     }
-                    if (e.key === 'app_permits' && e.newValue) setPermits(JSON.parse(e.newValue));
-                    if (e.key === 'app_announcements' && e.newValue) setAnnouncements(JSON.parse(e.newValue));
+                    setUsers(updatedUsers);
+                }
+
+                // 2. Fungsi Sinkronisasi
+                const syncData = () => {
+                    const savedUsers = localStorage.getItem('app_users');
+                    const savedLogs = localStorage.getItem('app_logs');
+                    const savedPermits = localStorage.getItem('app_permits');
+                    const savedAnnouncements = localStorage.getItem('app_announcements');
+
+                    // Update state HANYA jika data di storage berbeda (untuk mencegah loop render)
+                    // JSON.stringify dipakai untuk membandingkan isi object secara dalam
+                    setUsers(prev => (savedUsers && savedUsers !== JSON.stringify(prev)) ? JSON.parse(savedUsers) : prev);
+                    setLogs(prev => (savedLogs && savedLogs !== JSON.stringify(prev)) ? JSON.parse(savedLogs) : prev);
+                    setPermits(prev => (savedPermits && savedPermits !== JSON.stringify(prev)) ? JSON.parse(savedPermits) : prev);
+                    setAnnouncements(prev => (savedAnnouncements && savedAnnouncements !== JSON.stringify(prev)) ? JSON.parse(savedAnnouncements) : prev);
                 };
 
-                window.addEventListener('storage', handleStorageChange);
-                return () => window.removeEventListener('storage', handleStorageChange);
+                // Listen perubahan dari tab lain
+                window.addEventListener('storage', syncData);
+                
+                // Polling setiap 1 detik (Brute force sync agar data "Daftar" langsung masuk ke "Admin")
+                const interval = setInterval(syncData, 1000);
+
+                return () => {
+                    window.removeEventListener('storage', syncData);
+                    clearInterval(interval);
+                };
             }, []);
 
-            // Simpan perubahan ke LocalStorage
+            // Simpan perubahan ke LocalStorage setiap kali state berubah
             useEffect(() => { localStorage.setItem('app_users', JSON.stringify(users)); }, [users]);
             useEffect(() => { localStorage.setItem('app_logs', JSON.stringify(logs)); }, [logs]);
             useEffect(() => { localStorage.setItem('app_announcements', JSON.stringify(announcements)); }, [announcements]);
@@ -243,13 +257,14 @@
                     phone: '-'
                 };
 
-                // Update state -> triggers useEffect -> updates localStorage -> triggers storage event in other tabs
-                setUsers([...users, newUser]); 
+                // Update state akan otomatis memicu useEffect untuk simpan ke LocalStorage
+                // Polling di tab Admin akan otomatis mengambil data baru ini dalam 1 detik
+                setUsers(prevUsers => [...prevUsers, newUser]); 
                 setAuthError('');
                 
                 setLoginData({ email: registerData.email, password: registerData.password });
                 
-                alert('Pendaftaran Berhasil! Data langsung tersimpan ke Database Admin.');
+                alert('Pendaftaran Berhasil! Data Anda telah disinkronkan ke server Admin.');
                 setAuthView('login'); 
                 setRegisterData({ name: '', email: '', password: '', department: '', position: '', location: '' });
             };
