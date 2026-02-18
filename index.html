@@ -48,7 +48,7 @@
          * INITIAL DATA - PRODUCTION READY
          */
         const INITIAL_USERS = [
-            // AKUN ADMIN UTAMA
+            // AKUN ADMIN UTAMA (ID: 1)
             { 
                 id: 1, 
                 name: 'Administrator', 
@@ -60,7 +60,7 @@
                 location: 'PALANGKARAYA',
                 phone: '-' 
             },
-            // AKUN KARYAWAN (MARLIANTO)
+            // AKUN KARYAWAN CONTOH (ID: 2)
             { 
                 id: 2, 
                 name: 'Marlianto', 
@@ -143,11 +143,25 @@
         function App() {
             const [currentUser, setCurrentUser] = useState(null);
             
-            // --- STATE DENGAN PERSISTENCE ---
+            // --- STATE DENGAN AUTO-SYNC CREDENTIALS ---
+            // Bug Fix: Logika ini memastikan Admin & User Default selalu terupdate dari kode
+            // tanpa perlu reset cache browser manual.
             
             const [users, setUsers] = useState(() => {
                 const saved = localStorage.getItem('app_users');
-                return saved ? JSON.parse(saved) : INITIAL_USERS;
+                if (!saved) return INITIAL_USERS;
+
+                try {
+                    const parsedUsers = JSON.parse(saved);
+                    // Ambil user lain yang didaftarkan manual (ID selain 1 dan 2)
+                    const registeredUsers = parsedUsers.filter(u => u.id !== 1 && u.id !== 2);
+                    
+                    // Gabungkan: [Admin Terbaru dari Kode] + [Marlianto Terbaru dari Kode] + [User Lain]
+                    // Ini "memaksa" update password admin jika kode berubah
+                    return [...INITIAL_USERS, ...registeredUsers];
+                } catch (e) {
+                    return INITIAL_USERS;
+                }
             });
             
             const [logs, setLogs] = useState(() => {
@@ -188,20 +202,19 @@
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                const user = users.find(u => u.email === loginData.email && u.password === loginData.password);
+                const user = users.find(u => u.email.toLowerCase() === loginData.email.toLowerCase() && u.password === loginData.password);
                 if (user) {
                     setCurrentUser(user);
                     sessionStorage.setItem('currentUser', JSON.stringify(user));
                     setAuthError('');
                 } else {
-                    setAuthError('Email atau password salah! Jika lupa, gunakan menu Lupa Password.');
+                    setAuthError('Email atau password salah!');
                 }
             };
 
             const handleRegister = (e) => {
                 e.preventDefault();
-                // Cek email duplikat
-                if (users.find(u => u.email === registerData.email)) {
+                if (users.find(u => u.email.toLowerCase() === registerData.email.toLowerCase())) {
                     setAuthError('Email sudah terdaftar! Silakan login.');
                     return;
                 }
@@ -231,7 +244,7 @@
 
             const handleForgotPassword = (e) => {
                 e.preventDefault();
-                const user = users.find(u => u.email === forgotEmail);
+                const user = users.find(u => u.email.toLowerCase() === forgotEmail.toLowerCase());
                 if (user) {
                     setAuthError('');
                     setAuthSuccess(`Akun ditemukan atas nama ${user.name}. Silakan hubungi Admin (marliantoskyscraper@gmail.com) untuk reset password.`);
@@ -250,8 +263,9 @@
                 setAuthError('');
             };
 
+            // Fungsi Reset HANYA untuk Admin (di dalam dashboard)
             const handleResetSystem = () => {
-                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data dan mengembalikan ke User Awal (Email Baru). Lanjutkan?")) {
+                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data (absensi, cuti, karyawan tambahan) dan mengembalikan ke kondisi awal instalasi. Lanjutkan?")) {
                     localStorage.clear();
                     sessionStorage.clear();
                     window.location.reload();
@@ -319,13 +333,6 @@
                                         <p className="text-sm text-gray-600">Belum punya akun?</p>
                                         <button type="button" onClick={() => { setAuthView('register'); setAuthError(''); setAuthSuccess(''); }} className="text-blue-600 font-bold hover:underline text-sm mt-1 flex items-center justify-center gap-1 mx-auto">
                                             <UserPlus size={14}/> Daftar Karyawan Baru
-                                        </button>
-                                    </div>
-
-                                    <div className="text-center pt-4 border-t mt-4">
-                                        <p className="text-xs text-gray-400 mb-1">Tidak bisa login admin baru?</p>
-                                        <button type="button" onClick={handleResetSystem} className="text-xs text-red-400 hover:text-red-600 flex items-center justify-center gap-1 mx-auto font-medium">
-                                            <RefreshCw size={10} /> Reset Database Awal
                                         </button>
                                     </div>
                                 </form>
@@ -465,7 +472,6 @@
                 }
             };
 
-            // ... (Fungsi Permit, Export, Backup, Restore, Email, Add User, Add Announcement sama seperti sebelumnya) ...
             const handlePermitAction = (id, status) => { setPermits(permits.map(p => p.id === id ? { ...p, status: status } : p)); alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`); };
             const handleExportCSV = () => {
                 let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Divisi,Jabatan,Lokasi_Kerja,Tipe,Waktu,Lokasi_Absen\n";
