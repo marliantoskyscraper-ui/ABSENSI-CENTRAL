@@ -1,0 +1,666 @@
+import React, { useState, useEffect, useRef, Component } from 'react';
+import { Camera, MapPin, FileText, LogOut, Shield, AlertTriangle, Calendar, Settings, History, CheckCircle, Menu, Users, Trash2, Upload, Download, Check, Clock, Coffee, FileDown, Key, Map as MapIcon, Lock, RefreshCw, User, Power } from 'lucide-react';
+
+// --- DATA DEFAULT (Untuk inisialisasi awal) ---
+const DEFAULT_LOCATIONS = [
+  { id: 1, name: 'Pos Utama (Gerbang Depan)', lat: -6.175392, lng: 106.827153, radius: 100 }, 
+  { id: 2, name: 'Pos Gudang Belakang', lat: -6.175000, lng: 106.828000, radius: 100 },
+  { id: 3, name: 'Enter 2 Pangkalan Bun', lat: -2.686520, lng: 111.616330, radius: 100 },
+  { id: 4, name: 'Dinas PUPR Pangkalan Bun', lat: -2.694600, lng: 111.635800, radius: 100 },
+];
+
+const DEFAULT_USERS = [
+  { id: 1, name: 'Administrator', username: 'admin', password: 'admin', role: 'admin', locationId: null },
+  { id: 2, name: 'Petugas Default', username: 'petugas', password: '123', role: 'security', locationId: 1 },
+  { id: 3, name: 'Budi Santoso', username: 'budi', password: '123', role: 'security', locationId: 1 },
+  { id: 4, name: 'Marlianto', username: 'marlianto', password: '123', role: 'security', locationId: 3 },
+  { id: 5, name: 'Verina', username: 'verina', password: '123', role: 'security', locationId: 4 },
+];
+
+// --- ERROR BOUNDARY (Penangkap Error Fatal) ---
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error) { return { hasError: true }; }
+  componentDidCatch(error, errorInfo) { console.error("Critical Error:", error, errorInfo); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 text-center font-sans">
+          <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full border border-red-100">
+            <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
+            <h2 className="text-lg font-bold text-gray-800">Aplikasi Terhenti</h2>
+            <p className="text-xs text-gray-500 mb-6">Terjadi kesalahan sistem. Mohon reset data lokal.</p>
+            <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition flex justify-center items-center gap-2">
+              <RefreshCw size={16} /> Reset Total
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// --- HELPER FUNCTIONS ---
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+  const R = 6371e3; 
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+};
+
+const formatDateTime = (dateString) => {
+  try {
+    if (!dateString) return "-";
+    return new Date(dateString).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  } catch (e) { return "-"; }
+};
+
+// Fungsi Load Data Extra Aman
+const safeLoadJSON = (key, fallback) => {
+  try {
+    const item = localStorage.getItem(key);
+    if (!item) return fallback;
+    const parsed = JSON.parse(item);
+    if (!parsed) return fallback;
+    // Pastikan jika fallback array, parsed juga array
+    if (Array.isArray(fallback) && !Array.isArray(parsed)) return fallback;
+    return parsed;
+  } catch (e) {
+    console.warn(`Gagal load ${key}, menggunakan fallback.`);
+    return fallback;
+  }
+};
+
+// --- APP COMPONENT ---
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainApp />
+    </ErrorBoundary>
+  );
+}
+
+function MainApp() {
+  const [view, setView] = useState('login'); 
+  const [user, setUser] = useState(null);
+  const [notification, setNotification] = useState(null);
+
+  const [locations, setLocations] = useState(DEFAULT_LOCATIONS);
+  const [users, setUsers] = useState(DEFAULT_USERS);
+  const [logs, setLogs] = useState([]);
+  const [reports, setReports] = useState([]);
+
+  // Load Data
+  useEffect(() => {
+    setLocations(safeLoadJSON('security_locations', DEFAULT_LOCATIONS));
+    setUsers(safeLoadJSON('security_users_v2', DEFAULT_USERS));
+    setLogs(safeLoadJSON('security_logs', []));
+    setReports(safeLoadJSON('security_reports', []));
+
+    const savedUser = safeLoadJSON('security_current_user', null);
+    if (savedUser && savedUser.username) { // Validasi user object
+      setUser(savedUser);
+      setView(savedUser.role === 'admin' ? 'admin' : 'dashboard');
+    }
+  }, []);
+
+  // Auto Save dengan Try-Catch untuk menangani QuotaExceededError
+  useEffect(() => {
+    try {
+      localStorage.setItem('security_locations', JSON.stringify(locations));
+      localStorage.setItem('security_users_v2', JSON.stringify(users));
+      localStorage.setItem('security_logs', JSON.stringify(logs));
+      localStorage.setItem('security_reports', JSON.stringify(reports));
+    } catch (e) {
+      console.error("Gagal menyimpan data (Penyimpanan Penuh):", e);
+      // Jika penuh, hapus log lama (opsional, untuk mencegah crash)
+      if (logs.length > 50) {
+         const newLogs = logs.slice(0, 20); // Keep only 20 newest
+         setLogs(newLogs);
+      }
+    }
+  }, [locations, users, logs, reports]);
+
+  const showNotification = (msg, type = 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const username = e.target.username.value;
+    const password = e.target.password.value;
+    
+    const foundUser = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+
+    if (foundUser) {
+      setUser(foundUser);
+      localStorage.setItem('security_current_user', JSON.stringify(foundUser)); 
+      setView(foundUser.role === 'admin' ? 'admin' : 'dashboard');
+      showNotification(`Selamat datang, ${foundUser.name}`);
+    } else {
+      showNotification('Username atau password salah', 'error');
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('security_current_user'); 
+    setView('login');
+  };
+
+  const handleResetData = () => {
+    if(window.confirm("Yakin reset semua data aplikasi?")) {
+        localStorage.clear();
+        window.location.reload();
+    }
+  };
+
+  const MobileFrame = ({ children }) => (
+    <div className="min-h-screen bg-gray-100 md:bg-gray-900 md:flex md:items-center md:justify-center font-sans p-0 md:p-4">
+      <div className="w-full md:max-w-[400px] md:h-[850px] bg-slate-50 md:rounded-[2.5rem] md:shadow-2xl md:border-[8px] md:border-gray-800 relative overflow-hidden flex flex-col shadow-xl h-screen md:h-auto">
+        <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-6 bg-gray-800 rounded-b-xl z-50"></div>
+        {children}
+      </div>
+    </div>
+  );
+
+  if (view === 'login') {
+    return (
+      <MobileFrame>
+        <div className="flex-1 flex flex-col justify-center bg-white p-8">
+          <div className="text-center mb-8">
+            <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+              <Shield className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">SecuGuard</h1>
+            <p className="text-gray-500 text-sm">Sistem Absensi Security v3.0</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">USERNAME</label>
+              <input name="username" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm transition" placeholder="Masukkan Username" required />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">PASSWORD</label>
+              <input name="password" type="password" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm transition" placeholder="Masukkan Password" required />
+            </div>
+            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg transition active:scale-95">MASUK</button>
+          </form>
+          
+          <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+             <button onClick={handleResetData} className="text-[10px] text-red-400 hover:text-red-600 flex items-center justify-center gap-1 mx-auto mb-4">
+               <Trash2 size={10} /> Reset Data Aplikasi (Jika Error)
+             </button>
+             <p className="text-xs text-gray-400 mb-2">Akun Demo:</p>
+             <div className="flex justify-center gap-4 text-xs font-mono text-gray-600">
+               <span>marlianto / 123</span>
+               <span className="text-red-500">admin / admin</span>
+             </div>
+          </div>
+        </div>
+      </MobileFrame>
+    );
+  }
+
+  return (
+    <MobileFrame>
+      <div className="bg-white p-4 shadow-sm z-30 flex justify-between items-center shrink-0 pt-8 md:pt-5 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <Shield className="w-5 h-5 text-blue-600" />
+          <span className="font-bold text-base text-gray-800">SecuGuard</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium bg-blue-50 text-blue-600 px-2 py-1 rounded-md hidden sm:inline">{user?.name}</span>
+          <button onClick={handleLogout} className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition" title="Logout">
+            <Power size={18} />
+          </button>
+        </div>
+      </div>
+
+      {notification && (
+        <div className={`absolute top-20 left-4 right-4 z-50 p-3 rounded-lg shadow-lg text-white flex items-center gap-3 text-sm font-medium animate-bounce-in ${notification.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+          {notification.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
+          {notification.msg}
+        </div>
+      )}
+
+      <main className="flex-1 overflow-y-auto p-4 pb-24 scrollbar-hide bg-gray-50 relative">
+        {view === 'dashboard' && <Dashboard user={user} setView={setView} locations={locations} />}
+        {view === 'absen' && <AbsensiPage user={user} locations={locations} setView={setView} setLogs={setLogs} showNotif={showNotification} />}
+        {view === 'laporan' && <LaporanPage user={user} setView={setView} setReports={setReports} showNotif={showNotification} />}
+        {view === 'ijin' && <IjinPage user={user} setView={setView} setLogs={setLogs} showNotif={showNotification} />}
+        {view === 'change-password' && <ChangePasswordPage user={user} setUsers={setUsers} users={users} showNotif={showNotification} setView={setView} setUser={setUser} />}
+        {view === 'history' && <RiwayatPage logs={logs} reports={reports} user={user} setView={setView} />}
+        {view === 'admin' && <AdminPage locations={locations} setLocations={setLocations} logs={logs} setLogs={setLogs} reports={reports} users={users} setUsers={setUsers} setView={setView} showNotif={showNotification} />}
+      </main>
+
+      {user?.role !== 'admin' && (
+        <div className="bg-white border-t border-gray-200 flex justify-around p-2 pb-4 shrink-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <NavButton icon={<Menu size={20} />} label="Home" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
+          <NavButton icon={<Camera size={20} />} label="Absen" active={view === 'absen'} onClick={() => setView('absen')} />
+          <NavButton icon={<FileText size={20} />} label="Lapor" active={view === 'laporan'} onClick={() => setView('laporan')} />
+          <NavButton icon={<History size={20} />} label="Riwayat" active={view === 'history'} onClick={() => setView('history')} />
+        </div>
+      )}
+    </MobileFrame>
+  );
+}
+
+// --- SUB PAGES ---
+
+function Dashboard({ user, setView, locations }) {
+  const assignedLocation = locations?.find(l => l.id === parseInt(user?.locationId));
+  
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+        <h2 className="text-lg font-bold text-gray-800">Halo, <span className="text-blue-600">{user?.name || 'Petugas'}</span></h2>
+        <p className="text-gray-400 text-xs mt-1">Selamat bertugas, tetap waspada!</p>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1"><CheckCircle size={10}/> Aktif</div>
+          <div className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 truncate max-w-[200px]">
+            <MapIcon size={10}/> {assignedLocation?.name || 'Lokasi Tidak Ditemukan'}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <MenuCard icon={<Camera className="w-5 h-5 text-white" />} title="Absensi" desc="Masuk / Pulang" color="bg-blue-600" onClick={() => setView('absen')} />
+        <MenuCard icon={<FileText className="w-5 h-5 text-white" />} title="Laporan" desc="Kejadian / Patroli" color="bg-emerald-600" onClick={() => setView('laporan')} />
+        <MenuCard icon={<Calendar className="w-5 h-5 text-white" />} title="Ijin / Sakit" desc="Pengajuan Cuti" color="bg-orange-500" onClick={() => setView('ijin')} />
+        <MenuCard icon={<History className="w-5 h-5 text-white" />} title="Riwayat" desc="Log Aktivitas" color="bg-slate-600" onClick={() => setView('history')} />
+        <MenuCard icon={<Lock className="w-5 h-5 text-white" />} title="Ganti Pass" desc="Ubah Password" color="bg-indigo-600" onClick={() => setView('change-password')} />
+      </div>
+    </div>
+  );
+}
+
+function AbsensiPage({ user, locations, setView, setLogs, showNotif }) {
+  const videoRef = useRef(null);
+  const [photo, setPhoto] = useState(null);
+  const [currentLoc, setCurrentLoc] = useState(null);
+  const [targetLoc, setTargetLoc] = useState(null);
+  const [distance, setDistance] = useState(0);
+  const [isValidLoc, setIsValidLoc] = useState(false);
+  const [loadingLoc, setLoadingLoc] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [absentType, setAbsentType] = useState('Masuk');
+  const [isManualUpload, setIsManualUpload] = useState(false);
+  const [useMockGPS, setUseMockGPS] = useState(false);
+
+  useEffect(() => {
+    if (user && locations) {
+        const assigned = locations.find(l => l.id === parseInt(user.locationId)) || locations[0];
+        setTargetLoc(assigned);
+    }
+  }, [user, locations]);
+
+  // Handle GPS Update
+  useEffect(() => {
+    if (currentLoc && targetLoc) {
+        const dist = calculateDistance(currentLoc.lat, currentLoc.lng, targetLoc.lat, targetLoc.lng);
+        setDistance(dist);
+        setIsValidLoc(dist <= targetLoc.radius);
+    }
+  }, [currentLoc, targetLoc]);
+
+  // Fallback Mock GPS
+  useEffect(() => {
+     if (useMockGPS && targetLoc) {
+         setCurrentLoc({ lat: targetLoc.lat, lng: targetLoc.lng });
+     }
+  }, [useMockGPS, targetLoc]);
+
+  const activateHardware = () => {
+    setLoadingLoc(true);
+    setCameraActive(true);
+
+    // 1. GPS Check
+    if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setCurrentLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                setLoadingLoc(false);
+            },
+            (err) => {
+                console.warn("GPS Fail, using mock");
+                setUseMockGPS(true);
+                setLoadingLoc(false);
+            },
+            { enableHighAccuracy: false, timeout: 8000 }
+        );
+    } else {
+        setUseMockGPS(true);
+        setLoadingLoc(false);
+    }
+
+    // 2. Camera Start
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+            .then(stream => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play().catch(e => console.log("Play error", e));
+                }
+            })
+            .catch(err => {
+                setCameraActive(false);
+                showNotif("Kamera gagal, gunakan upload manual", "warning");
+            });
+    } else {
+        setCameraActive(false);
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    try {
+        const canvas = document.createElement('canvas');
+        // Kompresi Ukuran Gambar (Penting agar LocalStorage tidak penuh)
+        const scale = 0.5; // Scale down 50%
+        canvas.width = (videoRef.current.videoWidth || 640) * scale;
+        canvas.height = (videoRef.current.videoHeight || 480) * scale;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        
+        // Kompresi Kualitas JPEG (0.6)
+        const data = canvas.toDataURL('image/jpeg', 0.6);
+        setPhoto(data);
+        setIsManualUpload(false);
+        
+        // Stop stream hemat baterai
+        const stream = videoRef.current.srcObject;
+        if (stream) stream.getTracks().forEach(t => t.stop());
+    } catch(e) {
+        showNotif("Gagal mengambil foto", "error");
+    }
+  };
+
+  const handleFileUpload = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setPhoto(reader.result);
+              setIsManualUpload(true);
+              setCameraActive(false);
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
+  const handleSubmit = () => {
+      if (!isValidLoc && !useMockGPS) return showNotif("Lokasi tidak sesuai!", "error");
+      if (!photo) return showNotif("Foto wajib ada!", "error");
+
+      const newLog = {
+          id: Date.now(),
+          userId: user.name,
+          username: user.username,
+          type: 'absensi',
+          subType: absentType,
+          timestamp: new Date().toISOString(),
+          locationName: targetLoc?.name || 'Unknown',
+          photo: photo,
+          status: isManualUpload ? 'Pending Review' : 'Hadir',
+          isManualUpload,
+          coordinates: currentLoc
+      };
+
+      setLogs(prev => [newLog, ...prev]);
+      showNotif(`Absen ${absentType} berhasil!`);
+      setView('dashboard');
+  };
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+        if (videoRef.current && videoRef.current.srcObject) {
+            videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+        }
+    }
+  }, []);
+
+  return (
+    <div className="space-y-4">
+       <div className="flex justify-between items-center"><h2 className="font-bold text-gray-800">Absensi</h2><button onClick={() => setView('dashboard')} className="text-blue-600 text-sm">Batal</button></div>
+       
+       <div className="grid grid-cols-2 gap-2">
+          {['Masuk', 'Pulang', 'Mulai Istirahat', 'Selesai Istirahat'].map(type => (
+              <button key={type} onClick={() => setAbsentType(type)} className={`py-2 rounded-lg text-xs font-bold border ${absentType === type ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200'}`}>{type}</button>
+          ))}
+       </div>
+
+       <div className="relative bg-gray-900 rounded-xl overflow-hidden aspect-[3/4] flex flex-col items-center justify-center">
+          {!photo ? (
+              cameraActive ? (
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+              ) : (
+                  <div className="text-center p-6">
+                      <Camera className="text-gray-600 w-12 h-12 mx-auto mb-2" />
+                      <p className="text-gray-400 text-xs mb-4">Kamera belum aktif</p>
+                      <button onClick={activateHardware} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold mb-4 animate-pulse shadow-lg">Mulai Absen (Kamera & GPS)</button>
+                      <label className="text-gray-400 text-xs underline cursor-pointer block mt-2">
+                          Atau Upload Foto Manual <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                      </label>
+                  </div>
+              )
+          ) : (
+              <img src={photo} alt="Preview" className="w-full h-full object-cover" />
+          )}
+
+          {currentLoc && (
+              <div className="absolute bottom-0 w-full bg-black/60 p-2 text-white text-[10px]">
+                  <div className="flex items-center gap-1 mb-1"><MapIcon size={10}/> {targetLoc?.name}</div>
+                  <div className={`flex items-center gap-1 font-bold ${isValidLoc ? 'text-green-400' : 'text-red-400'}`}>
+                      {loadingLoc ? "Mencari GPS..." : `${distance}m dari lokasi`}
+                  </div>
+              </div>
+          )}
+       </div>
+
+       <div className="flex gap-2">
+           {photo ? (
+               <>
+                <button onClick={() => { setPhoto(null); setCameraActive(false); }} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold text-sm">Ulangi</button>
+                <button onClick={handleSubmit} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold text-sm">Kirim</button>
+               </>
+           ) : (
+               cameraActive && <button onClick={capturePhoto} className="w-full bg-white border-2 border-blue-600 text-blue-600 py-3 rounded-xl font-bold text-sm">Jepret Foto</button>
+           )}
+       </div>
+    </div>
+  );
+}
+
+function ChangePasswordPage({ user, setUsers, users, showNotif, setView, setUser }) {
+    const [pass, setPass] = useState({ old: '', new: '', confirm: '' });
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (pass.old !== user.password) return showNotif('Password lama salah', 'error');
+        if (pass.new !== pass.confirm) return showNotif('Konfirmasi password tidak cocok', 'error');
+        if (pass.new.length < 3) return showNotif('Password minimal 3 karakter', 'error');
+
+        const newUsers = users.map(u => u.id === user.id ? { ...u, password: pass.new } : u);
+        setUsers(newUsers);
+        
+        const updatedUser = { ...user, password: pass.new };
+        setUser(updatedUser);
+        localStorage.setItem('security_current_user', JSON.stringify(updatedUser));
+        
+        showNotif('Password berhasil diubah', 'success');
+        setView('dashboard');
+    };
+
+    return (
+        <div className="space-y-4">
+            <h2 className="text-xl font-bold text-gray-800">Ganti Password</h2>
+            <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm space-y-3">
+                <input type="password" placeholder="Password Lama" className="w-full border p-2 rounded-lg text-sm" onChange={e => setPass({ ...pass, old: e.target.value })} required />
+                <input type="password" placeholder="Password Baru" className="w-full border p-2 rounded-lg text-sm" onChange={e => setPass({ ...pass, new: e.target.value })} required />
+                <input type="password" placeholder="Konfirmasi Password" className="w-full border p-2 rounded-lg text-sm" onChange={e => setPass({ ...pass, confirm: e.target.value })} required />
+                <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm">Simpan</button>
+            </form>
+            <button onClick={() => setView('dashboard')} className="w-full text-gray-500 text-sm">Batal</button>
+        </div>
+    );
+}
+
+function RiwayatPage({ logs, user, setView }) {
+    const myLogs = logs.filter(l => l.username === user.username);
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center"><h2 className="font-bold text-gray-800">Riwayat</h2><button onClick={() => setView('dashboard')} className="text-blue-600 text-sm">Kembali</button></div>
+            <div className="space-y-2">
+                {myLogs.length === 0 ? <p className="text-center text-gray-400 text-xs py-4">Belum ada data.</p> : myLogs.map(log => (
+                    <div key={log.id} className="bg-white p-3 rounded-xl border border-gray-100 flex gap-3">
+                        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
+                            {log.photo ? <img src={log.photo} className="w-full h-full object-cover rounded-lg" alt="Log" /> : <Clock size={20} className="text-gray-400"/>}
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-sm text-gray-800">{log.subType}</h4>
+                            <p className="text-[10px] text-gray-500">{formatDateTime(log.timestamp)}</p>
+                            <span className={`text-[10px] px-2 py-0.5 rounded ${log.status === 'Hadir' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{log.status}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function LaporanPage({ user, setView, setReports, showNotif }) {
+    const [form, setForm] = useState({ cat: 'Patroli', desc: '' });
+    
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        setReports(prev => [{ id: Date.now(), userId: user.name, username: user.username, category: form.cat, description: form.desc, timestamp: new Date().toISOString() }, ...prev]);
+        showNotif("Laporan terkirim");
+        setView('dashboard');
+    };
+
+    return (
+        <div className="space-y-4">
+             <div className="flex justify-between items-center"><h2 className="font-bold text-gray-800">Laporan</h2><button onClick={() => setView('dashboard')} className="text-blue-600 text-sm">Batal</button></div>
+             <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm space-y-4">
+                 <div className="flex gap-2 overflow-x-auto pb-2">{['Patroli', 'Kejadian', 'Tamu', 'Temuan'].map(c => (
+                     <button type="button" key={c} onClick={() => setForm({...form, cat: c})} className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${form.cat === c ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{c}</button>
+                 ))}</div>
+                 <textarea className="w-full border p-3 rounded-lg text-sm h-32" placeholder="Deskripsi..." value={form.desc} onChange={e => setForm({...form, desc: e.target.value})} required></textarea>
+                 <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold text-sm">Kirim Laporan</button>
+             </form>
+        </div>
+    );
+}
+
+function IjinPage({ user, setView, setLogs, showNotif }) {
+    const [form, setForm] = useState({ type: 'Sakit', desc: '' });
+    
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        setLogs(prev => [{ id: Date.now(), userId: user.name, username: user.username, type: 'ijin', subType: form.type, description: form.desc, timestamp: new Date().toISOString(), status: 'Pending' }, ...prev]);
+        showNotif("Ijin diajukan");
+        setView('dashboard');
+    };
+
+    return (
+        <div className="space-y-4">
+             <div className="flex justify-between items-center"><h2 className="font-bold text-gray-800">Ijin/Sakit</h2><button onClick={() => setView('dashboard')} className="text-blue-600 text-sm">Batal</button></div>
+             <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm space-y-4">
+                 <select className="w-full border p-2 rounded-lg text-sm" value={form.type} onChange={e => setForm({...form, type: e.target.value})}>
+                     <option>Sakit</option><option>Ijin</option><option>Cuti</option>
+                 </select>
+                 <textarea className="w-full border p-3 rounded-lg text-sm h-24" placeholder="Alasan..." value={form.desc} onChange={e => setForm({...form, desc: e.target.value})} required></textarea>
+                 <button className="w-full bg-orange-500 text-white py-3 rounded-lg font-bold text-sm">Ajukan</button>
+             </form>
+        </div>
+    );
+}
+
+function AdminPage({ locations, setLocations, logs, setLogs, reports, users, setUsers, setView, showNotif }) {
+    const [tab, setTab] = useState('users');
+    const [newUser, setNewUser] = useState({ name: '', username: '', password: '', locationId: 1 });
+
+    const handleAddUser = (e) => {
+        e.preventDefault();
+        if (users.some(u => u.username === newUser.username)) { showNotif('Username sudah ada', 'error'); return; }
+        setUsers([...users, { id: Date.now(), ...newUser, role: 'security' }]);
+        showNotif("User ditambah");
+        setNewUser({ name: '', username: '', password: '', locationId: 1 });
+    };
+
+    const handleExport = () => {
+        const csv = "ID,User,Type,Time\n" + logs.map(l => `${l.id},${l.userId},${l.subType},${l.timestamp}`).join("\n");
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'logs.csv'; a.click();
+    };
+
+    return (
+        <div className="pb-20">
+            <div className="flex justify-between items-center mb-4"><h2 className="font-bold text-gray-800">Admin</h2><button onClick={() => setView('login')} className="text-red-500 text-xs font-bold">Keluar</button></div>
+            <div className="flex gap-2 mb-4 overflow-x-auto">{['users', 'logs'].map(t => <button key={t} onClick={() => setTab(t)} className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${tab === t ? 'bg-blue-800 text-white' : 'bg-white border'}`}>{t}</button>)}</div>
+
+            {tab === 'users' && (
+                <div className="space-y-4">
+                    <form onSubmit={handleAddUser} className="bg-white p-3 rounded-xl shadow-sm space-y-2">
+                        <input className="w-full border p-2 rounded text-xs" placeholder="Nama" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required />
+                        <input className="w-full border p-2 rounded text-xs" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required />
+                        <input className="w-full border p-2 rounded text-xs" placeholder="Password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required />
+                        <select className="w-full border p-2 rounded text-xs" value={newUser.locationId} onChange={e => setNewUser({...newUser, locationId: parseInt(e.target.value)})}>
+                             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                        <button className="w-full bg-blue-600 text-white py-2 rounded text-xs font-bold">Tambah</button>
+                    </form>
+                    <div className="space-y-2">
+                        {users.filter(u => u.role !== 'admin').map(u => (
+                            <div key={u.id} className="bg-white p-3 rounded-lg flex justify-between items-center border">
+                                <div><p className="font-bold text-xs">{u.name}</p><p className="text-[10px] text-gray-400">{u.username}</p></div>
+                                <button onClick={() => setUsers(users.filter(x => x.id !== u.id))} className="text-red-500"><Trash2 size={14}/></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {tab === 'logs' && (
+                <div className="space-y-4">
+                    <button onClick={handleExport} className="w-full bg-green-600 text-white py-2 rounded-lg text-xs font-bold flex justify-center gap-2"><Download size={14}/> Export CSV</button>
+                    <div className="space-y-2">
+                        {logs.map(l => (
+                            <div key={l.id} className="bg-white p-3 rounded-lg border flex justify-between items-start">
+                                <div><p className="font-bold text-xs">{l.userId}</p><p className="text-[10px] text-gray-400">{l.subType} - {formatDateTime(l.timestamp)}</p></div>
+                                <span className={`text-[10px] px-2 py-0.5 rounded ${l.status === 'Hadir' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{l.status}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+const MenuCard = ({ icon, title, desc, color, onClick }) => (
+  <button onClick={onClick} className={`${color} rounded-xl p-4 text-left shadow-lg flex flex-col justify-between h-24`}>
+    <div className="bg-white/20 w-fit p-1.5 rounded-lg">{icon}</div>
+    <div><h3 className="text-white font-bold text-sm">{title}</h3><p className="text-white/80 text-[10px]">{desc}</p></div>
+  </button>
+);
+
+const NavButton = ({ icon, label, active, onClick }) => (
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 ${active ? 'text-blue-600' : 'text-gray-400'}`}>
+    <div className={active ? "bg-blue-50 p-1 rounded-lg" : ""}>{icon}</div><span className="text-[10px] font-bold">{label}</span>
+  </button>
+);
