@@ -7,13 +7,13 @@
     <meta name="theme-color" content="#2563eb">
     <title>Sistem Absensi Pro</title>
     
-    <!-- Favicon (Ikon Tab Browser) -->
+    <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Babel (Untuk membaca JSX) -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <!-- Import Map -->
@@ -28,7 +28,6 @@
     </script>
 
     <style>
-        /* Mencegah scroll berlebih pada mobile saat ambil foto */
         body { -webkit-tap-highlight-color: transparent; }
     </style>
 </head>
@@ -42,37 +41,58 @@
             Camera, MapPin, User, LogOut, FileText, 
             Users, Bell, Calendar, CheckCircle, XCircle, 
             Menu, Download, Upload, Clock, Home, AlertCircle, Coffee, Trash2,
-            Database, Save, Mail, HardDrive
+            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus
         } from 'lucide-react';
 
         /**
-         * MOCK DATA & CONFIGURATION
+         * INITIAL DATA - PRODUCTION READY
          */
         const INITIAL_USERS = [
-            { id: 1, name: 'Super Admin', email: 'admin@kantor.com', role: 'admin', password: 'admin', department: 'HRD', phone: '08123456789' },
-            { id: 2, name: 'Budi Santoso', email: 'budi@kantor.com', role: 'employee', password: 'user', department: 'IT', phone: '08198765432' },
-            { id: 3, name: 'Siti Aminah', email: 'siti@kantor.com', role: 'employee', password: 'user', department: 'Finance', phone: '08122334455' },
+            // AKUN ADMIN UTAMA
+            { 
+                id: 1, 
+                name: 'Administrator', 
+                email: 'admin@kantor.com', 
+                role: 'admin', 
+                password: '12345', 
+                department: 'Management', 
+                position: 'Head Admin', 
+                phone: '-' 
+            },
+            // AKUN KARYAWAN (MARLIANTO)
+            { 
+                id: 2, 
+                name: 'Marlianto', 
+                email: 'marlianto@kantor.com', 
+                role: 'employee', 
+                password: 'marli123', 
+                department: 'Operasional', 
+                position: 'Staff', 
+                phone: '-' 
+            }
         ];
 
         const INITIAL_ANNOUNCEMENTS = [
-            { id: 1, title: 'Libur Nasional', content: 'Hari Jumat kantor libur memperingati hari besar.', date: '2023-10-20' },
-            { id: 2, title: 'Rapat Bulanan', content: 'Evaluasi kinerja dilakukan hari Senin pukul 09:00.', date: '2023-10-22' },
+            { id: 1, title: 'Selamat Datang', content: 'Selamat datang di sistem absensi digital baru.', date: new Date().toISOString().split('T')[0] }
         ];
 
-        const INITIAL_LOGS = [
-            { id: 101, userId: 2, name: 'Budi Santoso', type: 'Masuk', timestamp: new Date(Date.now() - 86400000).toISOString(), location: '-6.2088, 106.8456', photo: null, status: 'On Time' },
-            { id: 102, userId: 3, name: 'Siti Aminah', type: 'Masuk', timestamp: new Date(Date.now() - 86000000).toISOString(), location: '-6.2088, 106.8456', photo: null, status: 'On Time' },
-        ];
+        // LOGS DAN PERMITS DIMULAI KOSONG
+        const INITIAL_LOGS = [];
+        const INITIAL_PERMITS = [];
 
         const formatDate = (dateString) => {
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
             return new Date(dateString).toLocaleDateString('id-ID', options);
         };
 
+        const formatSimpleDate = (dateString) => {
+            return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+        };
+
         // --- KOMPONEN UI DASAR ---
 
         const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, icon: Icon }) => {
-            const baseStyle = "px-4 py-2 rounded-lg font-medium transition duration-200 flex items-center justify-center gap-2";
+            const baseStyle = "px-4 py-2 rounded-lg font-medium transition duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed";
             const variants = {
                 primary: "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300",
                 secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200",
@@ -106,6 +126,7 @@
                 success: 'bg-green-100 text-green-800',
                 warning: 'bg-yellow-100 text-yellow-800',
                 danger: 'bg-red-100 text-red-800',
+                gray: 'bg-gray-100 text-gray-800'
             };
             return (
                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[type] || styles.info}`}>
@@ -119,7 +140,7 @@
         function App() {
             const [currentUser, setCurrentUser] = useState(null);
             
-            // --- STATE DENGAN PERSISTENCE (LOCAL STORAGE) ---
+            // --- STATE DENGAN PERSISTENCE ---
             
             const [users, setUsers] = useState(() => {
                 const saved = localStorage.getItem('app_users');
@@ -136,18 +157,21 @@
                 return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
             });
 
-            // Simpan ke LocalStorage setiap kali ada perubahan data
+            const [permits, setPermits] = useState(() => {
+                const saved = localStorage.getItem('app_permits');
+                return saved ? JSON.parse(saved) : INITIAL_PERMITS;
+            });
+
             useEffect(() => { localStorage.setItem('app_users', JSON.stringify(users)); }, [users]);
             useEffect(() => { localStorage.setItem('app_logs', JSON.stringify(logs)); }, [logs]);
             useEffect(() => { localStorage.setItem('app_announcements', JSON.stringify(announcements)); }, [announcements]);
+            useEffect(() => { localStorage.setItem('app_permits', JSON.stringify(permits)); }, [permits]);
             
             // --- LOGIN LOGIC ---
 
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [loginError, setLoginError] = useState('');
-
-            const [activeTab, setActiveTab] = useState('dashboard');
 
             useEffect(() => {
                 const savedUser = sessionStorage.getItem('currentUser');
@@ -163,7 +187,6 @@
                     setCurrentUser(user);
                     sessionStorage.setItem('currentUser', JSON.stringify(user));
                     setLoginError('');
-                    setActiveTab('dashboard');
                 } else {
                     setLoginError('Email atau password salah!');
                 }
@@ -174,11 +197,10 @@
                 sessionStorage.removeItem('currentUser');
                 setEmail('');
                 setPassword('');
-                setActiveTab('dashboard');
             };
 
             const handleResetSystem = () => {
-                if(confirm("PERINGATAN: Semua data absensi dan user akan dihapus permanen. Lanjutkan?")) {
+                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data (absensi, cuti, karyawan tambahan) dan mengembalikan ke User Awal (Admin & Marlianto). Lanjutkan?")) {
                     localStorage.clear();
                     sessionStorage.clear();
                     window.location.reload();
@@ -210,7 +232,7 @@
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="admin@kantor.com"
+                            placeholder="nama@kantor.com"
                             required
                         />
                         </div>
@@ -226,11 +248,6 @@
                         />
                         </div>
                         <Button className="w-full mt-4">Masuk Sistem</Button>
-                        
-                        <div className="text-center text-xs text-gray-500 mt-4">
-                        <p>Demo Admin: admin@kantor.com / admin</p>
-                        <p>Demo User: budi@kantor.com / user</p>
-                        </div>
                     </form>
                     </div>
                 </div>
@@ -267,6 +284,8 @@
                         setLogs={setLogs}
                         announcements={announcements}
                         setAnnouncements={setAnnouncements}
+                        permits={permits}
+                        setPermits={setPermits}
                         handleResetSystem={handleResetSystem}
                     />
                     ) : (
@@ -275,6 +294,8 @@
                         logs={logs} 
                         setLogs={setLogs}
                         announcements={announcements}
+                        permits={permits}
+                        setPermits={setPermits}
                     />
                     )}
                 </main>
@@ -284,40 +305,58 @@
 
         // --- DASHBOARD ADMIN ---
 
-        function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, handleResetSystem }) {
-            const [view, setView] = useState('overview'); // overview, employees, reports, announcements, database
-            const [newUser, setNewUser] = useState({ name: '', email: '', department: '', role: 'employee' });
+        function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, permits, setPermits, handleResetSystem }) {
+            const [view, setView] = useState('overview'); 
+            const [newUser, setNewUser] = useState({ name: '', email: '', department: '', position: '', role: 'employee' });
+            
+            const [startDate, setStartDate] = useState('');
+            const [endDate, setEndDate] = useState('');
 
             const todayLogs = logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
             const uniqueAttendees = new Set(todayLogs.map(l => l.userId)).size;
+            
+            // Hitung izin pending
+            const pendingPermits = permits.filter(p => p.status === 'Pending');
 
-            // --- FUNGSI DATABASE & EMAIL ---
+            const filteredLogs = logs.filter(log => {
+                if (!startDate && !endDate) return true;
+                const logDate = new Date(log.timestamp);
+                logDate.setHours(0,0,0,0);
+                const start = startDate ? new Date(startDate) : new Date('2000-01-01');
+                start.setHours(0,0,0,0);
+                const end = endDate ? new Date(endDate) : new Date();
+                end.setHours(23,59,59,999);
+                return logDate >= start && logDate <= end;
+            });
+
+            // --- PERMIT ACTIONS ---
+            const handlePermitAction = (id, status) => {
+                setPermits(permits.map(p => 
+                    p.id === id ? { ...p, status: status } : p
+                ));
+                alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`);
+            };
 
             const handleExportCSV = () => {
-                let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Tipe,Waktu,Lokasi\n";
-                logs.forEach(row => {
-                    csvContent += `${row.id},${row.name},${row.type},${row.timestamp},"${row.location}"\n`;
+                let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Divisi,Jabatan,Tipe,Waktu,Lokasi\n";
+                filteredLogs.forEach(row => {
+                    const user = users.find(u => u.id === row.userId) || {};
+                    csvContent += `${row.id},"${row.name}","${user.department || '-'}","${user.position || '-'}",${row.type},${row.timestamp},"${row.location}"\n`;
                 });
                 const encodedUri = encodeURI(csvContent);
                 const link = document.createElement("a");
                 link.setAttribute("href", encodedUri);
-                link.setAttribute("download", `Laporan_Absensi_${new Date().toISOString().slice(0,10)}.csv`);
+                link.setAttribute("download", `Laporan_Absensi.csv`);
                 document.body.appendChild(link);
                 link.click();
-                return link;
             };
 
             const handleBackupJSON = () => {
-                const backupData = {
-                    users,
-                    logs,
-                    announcements,
-                    exportDate: new Date().toISOString()
-                };
+                const backupData = { users, logs, announcements, permits, exportDate: new Date().toISOString() };
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData));
                 const link = document.createElement("a");
                 link.setAttribute("href", dataStr);
-                link.setAttribute("download", `BACKUP_ABSENSI_${new Date().toISOString().slice(0,10)}.json`);
+                link.setAttribute("download", `BACKUP_FULL.json`);
                 document.body.appendChild(link);
                 link.click();
             };
@@ -328,76 +367,64 @@
                 fileReader.onload = e => {
                     try {
                         const parsedData = JSON.parse(e.target.result);
-                        if(parsedData.users && parsedData.logs) {
-                            if(confirm(`Restore data dari tanggal ${new Date(parsedData.exportDate).toLocaleDateString()}? Data saat ini akan ditimpa.`)) {
+                        if(parsedData.users) {
+                            if(confirm("Restore data? Data saat ini akan ditimpa.")) {
                                 setUsers(parsedData.users);
-                                setLogs(parsedData.logs);
+                                setLogs(parsedData.logs || []);
                                 setAnnouncements(parsedData.announcements || []);
-                                alert("Restore berhasil! Halaman akan dimuat ulang.");
+                                setPermits(parsedData.permits || []);
+                                alert("Restore berhasil!");
                                 window.location.reload();
                             }
-                        } else {
-                            alert("Format file tidak valid!");
                         }
-                    } catch (err) {
-                        alert("Gagal membaca file backup.");
-                    }
+                    } catch (err) { alert("Gagal membaca file."); }
                 };
             };
 
             const handleEmailBackup = () => {
-                // 1. Download File dulu
-                handleExportCSV();
-                
-                // 2. Buka Email Client
-                const subject = `Backup Database Absensi - ${new Date().toLocaleDateString()}`;
-                const body = `Halo Admin,\n\nTerlampir adalah data laporan absensi terbaru.\n\n(Mohon lampirkan file .csv yang baru saja terunduh secara otomatis ke email ini sebelum mengirim)\n\nTerima kasih.`;
+                const subject = `Laporan Absensi`;
+                const body = `Halo Admin,\n\nTerlampir data absensi.\n\nTerima kasih.`;
                 window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
             };
 
             const handleAddUser = (e) => {
                 e.preventDefault();
-                const id = users.length + 1;
-                setUsers([...users, { ...newUser, id, password: 'user' }]);
-                setNewUser({ name: '', email: '', department: '', role: 'employee' });
+                setUsers([...users, { ...newUser, id: users.length + 1, password: 'user' }]);
+                setNewUser({ name: '', email: '', department: '', position: '', role: 'employee' });
                 alert('Karyawan berhasil ditambahkan!');
             };
 
             const handleAddAnnouncement = (text) => {
-                const newAnn = {
-                    id: Date.now(),
-                    title: "Info Admin",
-                    content: text,
-                    date: new Date().toISOString().split('T')[0]
-                };
-                setAnnouncements([newAnn, ...announcements]);
+                setAnnouncements([{ id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }, ...announcements]);
             };
 
             return (
                 <div className="space-y-6">
-                <div className="flex justify-between items-center flex-wrap gap-2">
-                    <div className="flex overflow-x-auto gap-2 pb-2">
-                        {[
-                        { id: 'overview', label: 'Dashboard', icon: Home },
-                        { id: 'employees', label: 'Karyawan', icon: Users },
-                        { id: 'reports', label: 'Laporan', icon: FileText },
-                        { id: 'announcements', label: 'Info', icon: Bell },
-                        { id: 'database', label: 'Database', icon: Database }, // Tab Baru
-                        ].map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setView(tab.id)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition ${
-                            view === tab.id 
-                                ? 'bg-blue-600 text-white shadow-md' 
-                                : 'bg-white text-gray-600 hover:bg-gray-50'
-                            }`}
-                        >
-                            <tab.icon size={18} />
-                            {tab.label}
-                        </button>
-                        ))}
-                    </div>
+                <div className="flex overflow-x-auto gap-2 pb-2">
+                    {[
+                    { id: 'overview', label: 'Dashboard', icon: Home },
+                    { id: 'employees', label: 'Karyawan', icon: Users },
+                    { id: 'approvals', label: `Persetujuan (${pendingPermits.length})`, icon: ClipboardCheck },
+                    { id: 'reports', label: 'Laporan', icon: FileText },
+                    { id: 'announcements', label: 'Info', icon: Bell },
+                    { id: 'database', label: 'Database', icon: Database }, 
+                    ].map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setView(tab.id)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition ${
+                        view === tab.id 
+                            ? 'bg-blue-600 text-white shadow-md' 
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                    >
+                        <tab.icon size={18} />
+                        {tab.label}
+                        {tab.id === 'approvals' && pendingPermits.length > 0 && (
+                            <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{pendingPermits.length}</span>
+                        )}
+                    </button>
+                    ))}
                 </div>
 
                 {view === 'overview' && (
@@ -410,13 +437,12 @@
                         <h3 className="text-green-100 font-medium">Hadir Hari Ini</h3>
                         <p className="text-3xl font-bold mt-2">{uniqueAttendees}</p>
                     </Card>
-                    <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none">
-                        <h3 className="text-purple-100 font-medium">Belum Hadir</h3>
-                        <p className="text-3xl font-bold mt-2">{(users.length - 1) - uniqueAttendees}</p>
+                    <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none">
+                        <h3 className="text-orange-100 font-medium">Menunggu Persetujuan</h3>
+                        <p className="text-3xl font-bold mt-2">{pendingPermits.length}</p>
                     </Card>
-
                     <div className="md:col-span-3">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Aktivitas Terbaru</h3>
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">Aktivitas Absensi Terbaru</h3>
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                             <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50 border-b">
@@ -428,16 +454,18 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {logs.slice(0, 5).map(log => (
-                                <tr key={log.id} className="border-b last:border-0 hover:bg-gray-50">
-                                    <td className="p-4 font-medium">{log.name}</td>
-                                    <td className="p-4 text-gray-500">{formatDate(log.timestamp)}</td>
-                                    <td className="p-4">
-                                    <Badge type={log.type === 'Masuk' ? 'success' : log.type === 'Istirahat' ? 'warning' : 'danger'}>{log.type}</Badge>
-                                    </td>
-                                    <td className="p-4 text-gray-500 truncate max-w-xs">{log.location}</td>
-                                </tr>
-                                ))}
+                                {logs.length === 0 ? (
+                                    <tr><td colSpan="4" className="p-4 text-center text-gray-400">Belum ada aktivitas absensi.</td></tr>
+                                ) : (
+                                    logs.slice(0, 5).map(log => (
+                                    <tr key={log.id} className="border-b last:border-0 hover:bg-gray-50">
+                                        <td className="p-4 font-medium">{log.name}</td>
+                                        <td className="p-4 text-gray-500">{formatDate(log.timestamp)}</td>
+                                        <td className="p-4"><Badge type={log.type === 'Masuk' ? 'success' : 'warning'}>{log.type}</Badge></td>
+                                        <td className="p-4 text-gray-500 truncate max-w-xs">{log.location}</td>
+                                    </tr>
+                                    ))
+                                )}
                             </tbody>
                             </table>
                         </div>
@@ -451,46 +479,39 @@
                         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                                 <h3 className="font-bold text-gray-700">Daftar Karyawan</h3>
-                                <Button variant="outline" icon={Upload} onClick={() => alert("Gunakan menu Database untuk Import/Export data.")}>Import Excel</Button>
                             </div>
-                            <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 border-b">
-                                <tr>
-                                <th className="p-3">Nama</th>
-                                <th className="p-3">Email</th>
-                                <th className="p-3">Dept</th>
-                                <th className="p-3">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {users.filter(u => u.role !== 'admin').map(u => (
-                                <tr key={u.id} className="border-b">
-                                    <td className="p-3 font-medium">{u.name}</td>
-                                    <td className="p-3 text-gray-500">{u.email}</td>
-                                    <td className="p-3"><Badge>{u.department}</Badge></td>
-                                    <td className="p-3">
-                                        <button className="text-blue-600 hover:text-blue-800 text-xs font-semibold">Edit</button>
-                                    </td>
-                                </tr>
-                                ))}
-                            </tbody>
-                            </table>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 border-b">
+                                    <tr>
+                                    <th className="p-3">Nama</th>
+                                    <th className="p-3">Email</th>
+                                    <th className="p-3">Divisi</th>
+                                    <th className="p-3">Jabatan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.filter(u => u.role !== 'admin').map(u => (
+                                    <tr key={u.id} className="border-b">
+                                        <td className="p-3 font-medium">{u.name}</td>
+                                        <td className="p-3 text-gray-500">{u.email}</td>
+                                        <td className="p-3"><Badge>{u.department}</Badge></td>
+                                        <td className="p-3 text-gray-600">{u.position || '-'}</td>
+                                    </tr>
+                                    ))}
+                                </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-
                     <div>
                         <Card>
                             <h3 className="font-bold text-gray-800 mb-4">Tambah Anggota</h3>
                             <form onSubmit={handleAddUser} className="space-y-3">
-                                <input className="w-full p-2 border rounded" placeholder="Nama Lengkap" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required />
-                                <input className="w-full p-2 border rounded" type="email" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
-                                <select className="w-full p-2 border rounded" value={newUser.department} onChange={e => setNewUser({...newUser, department: e.target.value})} required>
-                                    <option value="">Pilih Departemen</option>
-                                    <option value="IT">IT</option>
-                                    <option value="HRD">HRD</option>
-                                    <option value="Finance">Finance</option>
-                                    <option value="Marketing">Marketing</option>
-                                </select>
+                                <input className="w-full p-2 border rounded text-sm" placeholder="Nama Lengkap" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required />
+                                <input className="w-full p-2 border rounded text-sm" type="email" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
+                                <input className="w-full p-2 border rounded text-sm" placeholder="Divisi" value={newUser.department} onChange={e => setNewUser({...newUser, department: e.target.value})} required />
+                                <input className="w-full p-2 border rounded text-sm" placeholder="Jabatan" value={newUser.position} onChange={e => setNewUser({...newUser, position: e.target.value})} required />
                                 <Button className="w-full" variant="success">Simpan Data</Button>
                             </form>
                         </Card>
@@ -498,11 +519,68 @@
                     </div>
                 )}
 
+                {view === 'approvals' && (
+                    <div className="space-y-4">
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                            <h2 className="font-bold text-gray-700 text-lg">Persetujuan Izin/Cuti</h2>
+                        </div>
+                        <div className="bg-white rounded-xl shadow-sm border overflow-hidden overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-4">Nama</th>
+                                    <th className="p-4">Jenis</th>
+                                    <th className="p-4">Tanggal</th>
+                                    <th className="p-4">Alasan</th>
+                                    <th className="p-4">Status</th>
+                                    <th className="p-4">Aksi</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {permits.length === 0 ? (
+                                    <tr><td colSpan="6" className="p-8 text-center text-gray-400">Tidak ada data pengajuan.</td></tr>
+                                ) : (
+                                    permits.sort((a,b) => new Date(b.dateApplied) - new Date(a.dateApplied)).map(permit => (
+                                        <tr key={permit.id} className="border-b hover:bg-gray-50">
+                                            <td className="p-4 font-medium">{permit.name}</td>
+                                            <td className="p-4"><Badge type="info">{permit.type}</Badge></td>
+                                            <td className="p-4">
+                                                {formatSimpleDate(permit.startDate)} - {formatSimpleDate(permit.endDate)}
+                                            </td>
+                                            <td className="p-4 text-gray-600 italic">"{permit.reason}"</td>
+                                            <td className="p-4">
+                                                <Badge type={permit.status === 'Approved' ? 'success' : permit.status === 'Rejected' ? 'danger' : 'warning'}>
+                                                    {permit.status}
+                                                </Badge>
+                                            </td>
+                                            <td className="p-4">
+                                                {permit.status === 'Pending' && (
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => handlePermitAction(permit.id, 'Approved')} className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200" title="Setujui"><CheckCircle size={18}/></button>
+                                                        <button onClick={() => handlePermitAction(permit.id, 'Rejected')} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200" title="Tolak"><XCircle size={18}/></button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
                 {view === 'reports' && (
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
-                            <h2 className="font-bold text-gray-700">Laporan Kehadiran</h2>
-                            <Button icon={Download} onClick={handleExportCSV}>Export ke Excel</Button>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+                                <h2 className="font-bold text-gray-700 text-lg">Laporan Kehadiran</h2>
+                                <Button icon={Download} onClick={handleExportCSV}>Export Data Terfilter</Button>
+                            </div>
+                            <div className="flex flex-wrap gap-4 items-end bg-gray-50 p-3 rounded-lg">
+                                <div><label className="block text-xs font-bold text-gray-500 mb-1">Dari</label><input type="date" className="p-2 border rounded-lg text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
+                                <div><label className="block text-xs font-bold text-gray-500 mb-1">Sampai</label><input type="date" className="p-2 border rounded-lg text-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
+                            </div>
                         </div>
                         <div className="bg-white rounded-xl shadow-sm border overflow-hidden overflow-x-auto">
                             <table className="w-full text-left text-sm">
@@ -512,23 +590,23 @@
                                     <th className="p-4">Nama</th>
                                     <th className="p-4">Status</th>
                                     <th className="p-4">Waktu</th>
-                                    <th className="p-4">Bukti Foto</th>
+                                    <th className="p-4">Lokasi</th>
                                 </tr>
                                 </thead>
                                 <tbody>
-                                {logs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).map(log => (
-                                    <tr key={log.id} className="border-b hover:bg-gray-50">
-                                    <td className="p-4">{new Date(log.timestamp).toLocaleDateString()}</td>
-                                    <td className="p-4 font-medium">{log.name}</td>
-                                    <td className="p-4"><Badge type={log.type === 'Masuk' ? 'success' : log.type === 'Istirahat' ? 'warning' : 'danger'}>{log.type}</Badge></td>
-                                    <td className="p-4">{new Date(log.timestamp).toLocaleTimeString()}</td>
-                                    <td className="p-4">
-                                        {log.photo ? (
-                                            <img src={log.photo} alt="Bukti" className="w-10 h-10 rounded-full object-cover border" />
-                                        ) : <span className="text-gray-400 text-xs">No Photo</span>}
-                                    </td>
-                                    </tr>
-                                ))}
+                                {filteredLogs.length === 0 ? (
+                                    <tr><td colSpan="5" className="p-4 text-center text-gray-400">Data tidak ditemukan.</td></tr>
+                                ) : (
+                                    filteredLogs.map(log => (
+                                        <tr key={log.id} className="border-b hover:bg-gray-50">
+                                        <td className="p-4">{new Date(log.timestamp).toLocaleDateString()}</td>
+                                        <td className="p-4 font-medium">{log.name}</td>
+                                        <td className="p-4"><Badge type={log.type === 'Masuk' ? 'success' : 'warning'}>{log.type}</Badge></td>
+                                        <td className="p-4">{new Date(log.timestamp).toLocaleTimeString()}</td>
+                                        <td className="p-4 text-xs text-gray-500">{log.location}</td>
+                                        </tr>
+                                    ))
+                                )}
                                 </tbody>
                             </table>
                         </div>
@@ -539,93 +617,44 @@
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Card>
                             <h3 className="font-bold mb-4">Buat Pengumuman Baru</h3>
-                            <form onSubmit={(e) => {
-                                e.preventDefault();
-                                handleAddAnnouncement(e.target.content.value);
-                                e.target.reset();
-                            }}>
-                                <textarea name="content" className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Tulis pengumuman di sini..."></textarea>
-                                <Button className="w-full mt-3">Kirim Pengumuman</Button>
+                            <form onSubmit={(e) => { e.preventDefault(); handleAddAnnouncement(e.target.content.value); e.target.reset(); }}>
+                                <textarea name="content" className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Isi pengumuman..."></textarea>
+                                <Button className="w-full mt-3">Kirim</Button>
                             </form>
                         </Card>
                         <div className="space-y-3">
                             {announcements.map(ann => (
                                 <div key={ann.id} className="bg-white p-4 rounded-lg border shadow-sm">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h4 className="font-bold text-gray-800">{ann.title}</h4>
-                                        <span className="text-xs text-gray-500">{ann.date}</span>
-                                    </div>
-                                    <p className="text-sm text-gray-600">{ann.content}</p>
+                                    <h4 className="font-bold text-gray-800">{ann.title}</h4>
+                                    <p className="text-sm text-gray-600 mt-1">{ann.content}</p>
+                                    <p className="text-xs text-gray-400 mt-2">{ann.date}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
 
-                {/* --- TAB DATABASE & BACKUP --- */}
                 {view === 'database' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {/* Backup ke File */}
                         <Card className="border-l-4 border-blue-500">
-                            <div className="flex items-center gap-3 mb-4 text-blue-700">
-                                <Save size={24} />
-                                <h3 className="font-bold text-lg">Backup Database</h3>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-4">
-                                Download seluruh data (User, Absensi, Pengumuman) dalam satu file JSON. Simpan file ini di Google Drive Anda.
-                            </p>
-                            <Button onClick={handleBackupJSON} className="w-full" variant="primary">
-                                Download Backup (.json)
-                            </Button>
+                            <h3 className="font-bold text-lg mb-2">Backup JSON</h3>
+                            <Button onClick={handleBackupJSON} className="w-full" variant="primary">Download</Button>
                         </Card>
-
-                        {/* Kirim ke Email */}
                         <Card className="border-l-4 border-green-500">
-                            <div className="flex items-center gap-3 mb-4 text-green-700">
-                                <Mail size={24} />
-                                <h3 className="font-bold text-lg">Kirim Laporan ke Email</h3>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-4">
-                                Download laporan Excel/CSV dan otomatis buka aplikasi email untuk mengirimkannya ke diri sendiri.
-                            </p>
-                            <Button onClick={handleEmailBackup} className="w-full" variant="success">
-                                Download & Email
-                            </Button>
+                            <h3 className="font-bold text-lg mb-2">Email Laporan</h3>
+                            <Button onClick={handleEmailBackup} className="w-full" variant="success">Kirim Email</Button>
                         </Card>
-
-                        {/* Restore Data */}
                         <Card className="border-l-4 border-purple-500">
-                            <div className="flex items-center gap-3 mb-4 text-purple-700">
-                                <Upload size={24} />
-                                <h3 className="font-bold text-lg">Restore Database</h3>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-4">
-                                Punya file backup? Upload di sini untuk mengembalikan data absensi yang hilang atau pindah perangkat.
-                            </p>
+                            <h3 className="font-bold text-lg mb-2">Restore JSON</h3>
                             <div className="relative">
-                                <input 
-                                    type="file" 
-                                    accept=".json"
-                                    onChange={handleRestoreJSON}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                />
-                                <Button className="w-full" variant="outline">
-                                    Pilih File Backup (.json)
-                                </Button>
+                                <input type="file" accept=".json" onChange={handleRestoreJSON} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                <Button className="w-full" variant="outline">Upload File</Button>
                             </div>
                         </Card>
-
-                        {/* Reset Data */}
                         <Card className="border-l-4 border-red-500 md:col-span-3">
-                            <div className="flex items-center gap-3 mb-4 text-red-700">
-                                <Trash2 size={24} />
-                                <h3 className="font-bold text-lg">Zona Bahaya</h3>
-                            </div>
                             <div className="flex justify-between items-center">
-                                <p className="text-sm text-gray-600">
-                                    Menghapus semua data dari browser ini. Lakukan hanya jika terjadi error parah.
-                                </p>
-                                <Button onClick={handleResetSystem} variant="danger">Reset Total Sistem</Button>
+                                <h3 className="font-bold text-lg text-red-700">Zona Bahaya</h3>
+                                <Button onClick={handleResetSystem} variant="danger">Reset Total</Button>
                             </div>
                         </Card>
                     </div>
@@ -636,226 +665,191 @@
 
         // --- DASHBOARD KARYAWAN ---
 
-        function EmployeeDashboard({ user, logs, setLogs, announcements }) {
-            const [activeTab, setActiveTab] = useState('absen'); // absen, history, permit
+        function EmployeeDashboard({ user, logs, setLogs, announcements, permits, setPermits }) {
+            const [activeTab, setActiveTab] = useState('absen'); 
             const [isCameraOpen, setIsCameraOpen] = useState(false);
             const [location, setLocation] = useState(null);
-            const [locationError, setLocationError] = useState(null);
             const [photo, setPhoto] = useState(null);
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
+            // State Form Izin
+            const [permitForm, setPermitForm] = useState({ type: 'Sakit', startDate: '', endDate: '', reason: '' });
+
             const myLogs = logs.filter(l => l.userId === user.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const myPermits = permits.filter(p => p.userId === user.id).sort((a,b) => new Date(b.dateApplied) - new Date(a.dateApplied));
 
             const startCamera = async () => {
                 try {
                 setIsCameraOpen(true);
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                }
-                } catch (err) {
-                alert("Gagal mengakses kamera. Pastikan izin diberikan.");
-                setIsCameraOpen(false);
-                }
+                if (videoRef.current) videoRef.current.srcObject = stream;
+                } catch (err) { alert("Gagal akses kamera."); }
             };
 
             const takePhoto = () => {
                 const video = videoRef.current;
                 const canvas = canvasRef.current;
                 if (video && canvas) {
-                const context = canvas.getContext('2d');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const dataUrl = canvas.toDataURL('image/png');
-                setPhoto(dataUrl);
-                
-                const stream = video.srcObject;
-                const tracks = stream.getTracks();
-                tracks.forEach(track => track.stop());
-                setIsCameraOpen(false);
+                    const context = canvas.getContext('2d');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    setPhoto(canvas.toDataURL('image/png'));
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                    setIsCameraOpen(false);
                 }
             };
 
             const getLocation = () => {
                 if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                    setLocation({
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    });
-                    setLocationError(null);
-                    },
-                    (error) => {
-                    setLocationError("Gagal mendapatkan lokasi. Pastikan GPS aktif.");
-                    }
-                );
-                } else {
-                setLocationError("Browser tidak mendukung Geolocation.");
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }),
+                        () => alert("Gagal lokasi")
+                    );
                 }
             };
 
-            useEffect(() => {
-                if (activeTab === 'absen') {
-                getLocation();
-                }
-            }, [activeTab]);
+            useEffect(() => { if (activeTab === 'absen') getLocation(); }, [activeTab]);
 
             const handleSubmitAttendance = (type) => {
                 if (!location) return alert("Menunggu lokasi...");
-                if (!photo && (type === 'Masuk' || type === 'Istirahat' || type === 'Pulang')) return alert("Wajib foto selfie!");
-
-                const newLog = {
-                id: Date.now(),
-                userId: user.id,
-                name: user.name,
-                type: type,
-                timestamp: new Date().toISOString(),
-                location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
-                photo: photo,
-                status: 'Hadir'
-                };
-
-                // PENTING: setLogs akan memicu useEffect di App untuk menyimpan ke LocalStorage
-                setLogs([newLog, ...logs]);
+                if (!photo) return alert("Wajib foto!");
+                setLogs([{
+                    id: Date.now(), userId: user.id, name: user.name, type: type,
+                    timestamp: new Date().toISOString(),
+                    location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+                    photo: photo, status: 'Hadir'
+                }, ...logs]);
                 setPhoto(null);
-                alert(`Absen ${type} Berhasil! Data tersimpan.`);
+                alert(`Absen ${type} Berhasil!`);
+            };
+
+            const handleSubmitPermit = (e) => {
+                e.preventDefault();
+                setPermits([{
+                    id: Date.now(),
+                    userId: user.id,
+                    name: user.name,
+                    type: permitForm.type,
+                    startDate: permitForm.startDate,
+                    endDate: permitForm.endDate,
+                    reason: permitForm.reason,
+                    status: 'Pending',
+                    dateApplied: new Date().toISOString()
+                }, ...permits]);
+                setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' });
+                alert("Pengajuan berhasil dikirim! Menunggu persetujuan admin.");
             };
 
             return (
                 <div className="max-w-2xl mx-auto space-y-6">
-                
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
                     <h2 className="text-2xl font-bold">Halo, {user.name} 👋</h2>
-                    <p className="opacity-90 mt-1">{user.department} Department</p>
-                    <div className="mt-6 flex gap-4 text-sm bg-white/10 p-3 rounded-lg backdrop-blur-sm">
-                    <div className="flex items-center gap-2">
-                        <Clock size={16} />
-                        <span>{new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</span>
-                    </div>
-                    <div className="h-4 w-px bg-white/30"></div>
-                    <div className="flex items-center gap-2">
-                        <Calendar size={16} />
-                        <span>{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
-                    </div>
-                    </div>
+                    <p className="opacity-90 mt-1">{user.position} - {user.department}</p>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
                     <button onClick={() => setActiveTab('absen')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'absen' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}>
-                        <Camera />
-                        <span className="text-xs font-bold">Absen</span>
+                        <Camera /> <span className="text-xs font-bold">Absen</span>
                     </button>
                     <button onClick={() => setActiveTab('history')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'history' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}>
-                        <Clock />
-                        <span className="text-xs font-bold">Riwayat</span>
+                        <Clock /> <span className="text-xs font-bold">Riwayat</span>
                     </button>
                     <button onClick={() => setActiveTab('permit')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'permit' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}>
-                        <FileText />
-                        <span className="text-xs font-bold">Izin/Cuti</span>
+                        <FileText /> <span className="text-xs font-bold">Izin/Cuti</span>
                     </button>
                 </div>
 
                 {activeTab === 'absen' && (
                     <Card className="space-y-6">
                     <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                        <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${location ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                <MapPin size={16} />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 font-medium">Lokasi Anda</p>
-                                <p className="text-sm font-bold text-gray-800">
-                                    {location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'Mencari lokasi...'}
-                                </p>
-                            </div>
-                        </div>
+                        <div className="flex items-center gap-3"><MapPin size={16} /> <span className="text-sm font-bold">{location ? 'Lokasi Terkunci' : 'Mencari Lokasi...'}</span></div>
                         {location && <Badge type="success">Akurat</Badge>}
                     </div>
-
                     <div className="relative bg-black rounded-xl overflow-hidden aspect-[4/3] flex items-center justify-center">
-                        {!isCameraOpen && !photo && (
-                            <div className="text-center">
-                                <p className="text-gray-400 mb-4 text-sm">Kamera belum aktif</p>
-                                <Button onClick={startCamera} variant="outline" className="bg-white/10 text-white border-white/20 hover:bg-white/20">Buka Kamera</Button>
-                            </div>
-                        )}
-                        
-                        {isCameraOpen && (
-                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
-                        )}
-                        
-                        {photo && (
-                            <img src={photo} alt="Captured" className="w-full h-full object-cover" />
-                        )}
-
-                        {isCameraOpen && (
-                            <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-                                <button onClick={takePhoto} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 flex items-center justify-center shadow-lg active:scale-95 transition">
-                                    <div className="w-12 h-12 bg-red-500 rounded-full"></div>
-                                </button>
-                            </div>
-                        )}
+                        {!isCameraOpen && !photo && <Button onClick={startCamera} variant="outline" className="bg-white/10 text-white border-white/20">Buka Kamera</Button>}
+                        {isCameraOpen && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>}
+                        {photo && <img src={photo} className="w-full h-full object-cover" />}
+                        {isCameraOpen && <div className="absolute bottom-4 left-0 right-0 flex justify-center"><button onClick={takePhoto} className="w-16 h-16 bg-white rounded-full border-4 flex items-center justify-center"><div className="w-12 h-12 bg-red-500 rounded-full"></div></button></div>}
                     </div>
-                        
-                    {photo && (
-                        <div className="flex flex-col gap-3">
-                            <Button variant="success" onClick={() => handleSubmitAttendance('Masuk')}>Absen Masuk</Button>
-                            <Button variant="warning" onClick={() => handleSubmitAttendance('Istirahat')}>Absen Istirahat</Button>
-                            <Button variant="danger" onClick={() => handleSubmitAttendance('Pulang')}>Absen Pulang</Button>
-                        </div>
-                    )}
-
-                    {photo && (
-                        <Button variant="outline" className="w-full" onClick={() => setPhoto(null)}>Foto Ulang</Button>
-                    )}
+                    {photo && <div className="flex flex-col gap-3">
+                        <Button variant="success" onClick={() => handleSubmitAttendance('Masuk')}>Absen Masuk</Button>
+                        <Button variant="warning" onClick={() => handleSubmitAttendance('Istirahat')}>Absen Istirahat</Button>
+                        <Button variant="danger" onClick={() => handleSubmitAttendance('Pulang')}>Absen Pulang</Button>
+                    </div>}
+                    {photo && <Button variant="outline" className="w-full" onClick={() => setPhoto(null)}>Foto Ulang</Button>}
                     </Card>
+                )}
+
+                {activeTab === 'permit' && (
+                    <div className="space-y-6">
+                        <Card>
+                            <h3 className="font-bold text-gray-800 mb-4">Buat Pengajuan Baru</h3>
+                            <form onSubmit={handleSubmitPermit} className="space-y-3">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500">Jenis Izin</label>
+                                    <select className="w-full p-2 border rounded-lg mt-1" value={permitForm.type} onChange={e => setPermitForm({...permitForm, type: e.target.value})}>
+                                        <option value="Sakit">Sakit</option>
+                                        <option value="Izin">Izin (Keperluan Pribadi)</option>
+                                        <option value="Cuti Tahunan">Cuti Tahunan</option>
+                                        <option value="Cuti Melahirkan">Cuti Melahirkan</option>
+                                        <option value="Dinas Luar">Dinas Luar</option>
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500">Mulai</label>
+                                        <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.startDate} onChange={e => setPermitForm({...permitForm, startDate: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500">Sampai</label>
+                                        <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.endDate} onChange={e => setPermitForm({...permitForm, endDate: e.target.value})} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500">Alasan / Keterangan</label>
+                                    <textarea required className="w-full p-2 border rounded-lg mt-1 h-20" placeholder="Jelaskan alasan pengajuan..." value={permitForm.reason} onChange={e => setPermitForm({...permitForm, reason: e.target.value})}></textarea>
+                                </div>
+                                <Button className="w-full">Kirim Pengajuan</Button>
+                            </form>
+                        </Card>
+
+                        <div className="space-y-3">
+                            <h3 className="font-bold text-gray-700">Riwayat Pengajuan Saya</h3>
+                            {myPermits.length === 0 ? <p className="text-center text-gray-400 py-4">Belum ada pengajuan.</p> : myPermits.map(p => (
+                                <div key={p.id} className="bg-white p-4 rounded-xl border shadow-sm">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <Badge type="info">{p.type}</Badge>
+                                        <Badge type={p.status === 'Approved' ? 'success' : p.status === 'Rejected' ? 'danger' : 'warning'}>{p.status}</Badge>
+                                    </div>
+                                    <p className="text-sm font-bold text-gray-800">{formatSimpleDate(p.startDate)} - {formatSimpleDate(p.endDate)}</p>
+                                    <p className="text-sm text-gray-600 mt-1">{p.reason}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 )}
 
                 {activeTab === 'history' && (
                     <div className="space-y-4">
-                        <h3 className="font-bold text-gray-700">Riwayat Bulan Ini</h3>
-                        {myLogs.length === 0 ? (
-                            <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">
-                                Belum ada riwayat absensi.
-                            </div>
-                        ) : (
+                        <h3 className="font-bold text-gray-700">Riwayat Absensi</h3>
+                        {myLogs.length === 0 ? <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">Belum ada riwayat.</div> : 
                             myLogs.map(log => (
                                 <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border flex items-center gap-4">
-                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${log.type === 'Masuk' ? 'bg-green-100 text-green-600' : log.type === 'Istirahat' ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-600'}`}>
-                                        {log.type === 'Masuk' ? <LogOut className="rotate-180" size={20} /> : log.type === 'Istirahat' ? <Coffee size={20} /> : <LogOut size={20} />}
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${log.type === 'Masuk' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                        {log.type === 'Masuk' ? <LogOut className="rotate-180" size={20} /> : <LogOut size={20} />}
                                     </div>
                                     <div className="flex-1">
                                         <h4 className="font-bold text-gray-800">{log.type}</h4>
                                         <p className="text-xs text-gray-500">{formatDate(log.timestamp)}</p>
-                                        <p className="text-xs text-gray-400 mt-1 flex items-center gap-1"><MapPin size={10}/> {log.location}</p>
                                     </div>
-                                    {log.photo && (
-                                        <img src={log.photo} className="w-12 h-12 rounded-lg object-cover border" alt="Proof" />
-                                    )}
+                                    {log.photo && <img src={log.photo} className="w-12 h-12 rounded-lg object-cover border" />}
                                 </div>
                             ))
-                        )}
+                        }
                     </div>
                 )}
-
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2 text-yellow-800 font-bold">
-                        <Bell size={18} />
-                        <h4>Pengumuman Kantor</h4>
-                    </div>
-                    <ul className="space-y-3">
-                        {announcements.slice(0, 2).map(ann => (
-                            <li key={ann.id} className="text-sm border-b border-yellow-200 pb-2 last:border-0 last:pb-0">
-                                <p className="font-semibold text-gray-800">{ann.title}</p>
-                                <p className="text-gray-600">{ann.content}</p>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-
                 <canvas ref={canvasRef} className="hidden"></canvas>
                 </div>
             );
