@@ -177,19 +177,34 @@
                     setUsers(updatedUsers);
                 }
 
-                // 2. Fungsi Sinkronisasi
+                // 2. Fungsi Sinkronisasi (Diperbaiki)
                 const syncData = () => {
-                    const savedUsers = localStorage.getItem('app_users');
-                    const savedLogs = localStorage.getItem('app_logs');
-                    const savedPermits = localStorage.getItem('app_permits');
-                    const savedAnnouncements = localStorage.getItem('app_announcements');
+                    try {
+                        const savedUsers = localStorage.getItem('app_users');
+                        const savedLogs = localStorage.getItem('app_logs');
+                        const savedPermits = localStorage.getItem('app_permits');
+                        const savedAnnouncements = localStorage.getItem('app_announcements');
 
-                    // Update state HANYA jika data di storage berbeda (untuk mencegah loop render)
-                    // JSON.stringify dipakai untuk membandingkan isi object secara dalam
-                    setUsers(prev => (savedUsers && savedUsers !== JSON.stringify(prev)) ? JSON.parse(savedUsers) : prev);
-                    setLogs(prev => (savedLogs && savedLogs !== JSON.stringify(prev)) ? JSON.parse(savedLogs) : prev);
-                    setPermits(prev => (savedPermits && savedPermits !== JSON.stringify(prev)) ? JSON.parse(savedPermits) : prev);
-                    setAnnouncements(prev => (savedAnnouncements && savedAnnouncements !== JSON.stringify(prev)) ? JSON.parse(savedAnnouncements) : prev);
+                        // Update state HANYA jika data di storage berbeda dan valid
+                        if (savedUsers) {
+                            const parsed = JSON.parse(savedUsers);
+                            setUsers(prev => JSON.stringify(prev) !== savedUsers ? parsed : prev);
+                        }
+                        if (savedLogs) {
+                            const parsed = JSON.parse(savedLogs);
+                            setLogs(prev => JSON.stringify(prev) !== savedLogs ? parsed : prev);
+                        }
+                        if (savedPermits) {
+                            const parsed = JSON.parse(savedPermits);
+                            setPermits(prev => JSON.stringify(prev) !== savedPermits ? parsed : prev);
+                        }
+                        if (savedAnnouncements) {
+                            const parsed = JSON.parse(savedAnnouncements);
+                            setAnnouncements(prev => JSON.stringify(prev) !== savedAnnouncements ? parsed : prev);
+                        }
+                    } catch (e) {
+                        console.error("Sync error", e);
+                    }
                 };
 
                 // Listen perubahan dari tab lain
@@ -257,8 +272,7 @@
                     phone: '-'
                 };
 
-                // Update state akan otomatis memicu useEffect untuk simpan ke LocalStorage
-                // Polling di tab Admin akan otomatis mengambil data baru ini dalam 1 detik
+                // PENTING: Gunakan functional update untuk menjamin data baru ditambahkan ke state terkini
                 setUsers(prevUsers => [...prevUsers, newUser]); 
                 setAuthError('');
                 
@@ -297,6 +311,17 @@
                     window.location.reload();
                 }
             }
+
+            // Fungsi manual sync untuk Admin
+            const manualSync = () => {
+                const savedLogs = localStorage.getItem('app_logs');
+                if (savedLogs) {
+                    setLogs(JSON.parse(savedLogs));
+                    alert("Data berhasil disinkronkan dengan database pusat!");
+                } else {
+                    alert("Database masih kosong.");
+                }
+            };
 
             if (!currentUser) {
                 return (
@@ -418,6 +443,7 @@
                         permits={permits}
                         setPermits={setPermits}
                         handleResetSystem={handleResetSystem}
+                        manualSync={manualSync}
                     />
                     ) : (
                     <EmployeeDashboard 
@@ -436,7 +462,7 @@
 
         // --- DASHBOARD ADMIN ---
 
-        function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, permits, setPermits, handleResetSystem }) {
+        function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, permits, setPermits, handleResetSystem, manualSync }) {
             const [view, setView] = useState('overview'); 
             const [newUser, setNewUser] = useState({ name: '', email: '', department: '', position: '', location: '', role: 'employee' });
             const [startDate, setStartDate] = useState('');
@@ -462,12 +488,12 @@
             const handleResetUserPassword = (userId) => {
                 const newPass = prompt("Masukkan password baru untuk user ini:");
                 if (newPass) {
-                    setUsers(users.map(u => u.id === userId ? { ...u, password: newPass } : u));
+                    setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, password: newPass } : u));
                     alert("Password berhasil diubah & disinkronkan!");
                 }
             };
 
-            const handlePermitAction = (id, status) => { setPermits(permits.map(p => p.id === id ? { ...p, status: status } : p)); alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`); };
+            const handlePermitAction = (id, status) => { setPermits(prev => prev.map(p => p.id === id ? { ...p, status: status } : p)); alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`); };
             const handleExportCSV = () => {
                 let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Divisi,Jabatan,Lokasi_Kerja,Tipe,Waktu,Lokasi_Absen\n";
                 filteredLogs.forEach(row => { const user = users.find(u => u.id === row.userId) || {}; csvContent += `${row.id},"${row.name}","${user.department || '-'}","${user.position || '-'}","${user.location || '-'}",${row.type},${row.timestamp},"${row.location}"\n`; });
@@ -476,8 +502,8 @@
             const handleBackupJSON = () => { const backupData = { users, logs, announcements, permits, exportDate: new Date().toISOString() }; const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData)); const link = document.createElement("a"); link.setAttribute("href", dataStr); link.setAttribute("download", `BACKUP_FULL.json`); document.body.appendChild(link); link.click(); };
             const handleRestoreJSON = (event) => { const fileReader = new FileReader(); fileReader.readAsText(event.target.files[0], "UTF-8"); fileReader.onload = e => { try { const parsedData = JSON.parse(e.target.result); if(parsedData.users) { if(confirm("Restore data? Data saat ini akan ditimpa.")) { setUsers(parsedData.users); setLogs(parsedData.logs || []); setAnnouncements(parsedData.announcements || []); setPermits(parsedData.permits || []); alert("Restore berhasil!"); window.location.reload(); } } } catch (err) { alert("Gagal membaca file."); } }; };
             const handleEmailBackup = () => { handleExportCSV(); const emailTo = "karsasentana@gmail.com"; const subject = `Laporan Database Absensi - ${new Date().toLocaleDateString()}`; const body = `Halo Admin,\n\nBerikut adalah laporan database absensi terbaru dari sistem.\n\n(Mohon lampirkan file .csv yang baru saja terunduh secara otomatis)\n\nTerima kasih.`; window.location.href = `mailto:${emailTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; };
-            const handleAddUser = (e) => { e.preventDefault(); setUsers([...users, { ...newUser, id: users.length + 1, password: 'user' }]); setNewUser({ name: '', email: '', department: '', position: '', location: '', role: 'employee' }); alert('Karyawan berhasil ditambahkan!'); };
-            const handleAddAnnouncement = (text) => { setAnnouncements([{ id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }, ...announcements]); };
+            const handleAddUser = (e) => { e.preventDefault(); setUsers(prev => [...prev, { ...newUser, id: Date.now(), password: 'user' }]); setNewUser({ name: '', email: '', department: '', position: '', location: '', role: 'employee' }); alert('Karyawan berhasil ditambahkan!'); };
+            const handleAddAnnouncement = (text) => { setAnnouncements(prev => [{ id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }, ...prev]); };
 
             return (
                 <div className="space-y-6">
@@ -487,7 +513,12 @@
                         <Activity size={16} className="animate-pulse" />
                         <span className="font-semibold">Live Sync Aktif:</span> Data pendaftar & absensi terhubung real-time.
                     </div>
-                    <span className="text-xs text-green-600">{new Date().toLocaleTimeString()}</span>
+                    <div className="flex items-center gap-4">
+                        <span className="text-xs text-green-600">{new Date().toLocaleTimeString()}</span>
+                        <button onClick={manualSync} className="text-xs bg-white border border-green-300 px-2 py-1 rounded hover:bg-green-100 flex items-center gap-1">
+                            <RefreshCw size={12}/> Paksa Refresh
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex overflow-x-auto gap-2 pb-2">
@@ -778,7 +809,7 @@
             );
         }
 
-        // --- DASHBOARD KARYAWAN (Same as before) ---
+        // --- DASHBOARD KARYAWAN ---
         function EmployeeDashboard({ user, logs, setLogs, announcements, permits, setPermits }) {
             const [activeTab, setActiveTab] = useState('absen'); 
             const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -793,8 +824,16 @@
             const takePhoto = () => { const video = videoRef.current; const canvas = canvasRef.current; if (video && canvas) { const context = canvas.getContext('2d'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; context.drawImage(video, 0, 0, canvas.width, canvas.height); setPhoto(canvas.toDataURL('image/png')); video.srcObject.getTracks().forEach(track => track.stop()); setIsCameraOpen(false); } };
             const getLocation = () => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition( (position) => setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }), () => alert("Gagal lokasi") ); } };
             useEffect(() => { if (activeTab === 'absen') getLocation(); }, [activeTab]);
-            const handleSubmitAttendance = (type) => { if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); setLogs([{ id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' }, ...logs]); setPhoto(null); alert(`Absen ${type} Berhasil!`); };
-            const handleSubmitPermit = (e) => { e.preventDefault(); setPermits([{ id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() }, ...permits]); setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' }); alert("Pengajuan berhasil dikirim! Menunggu persetujuan admin."); };
+            const handleSubmitAttendance = (type) => { if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); 
+                // PENTING: Functional Update untuk setLogs agar data tidak tertimpa
+                setLogs(prevLogs => [{ id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' }, ...prevLogs]); 
+                setPhoto(null); alert(`Absen ${type} Berhasil!`); 
+            };
+            const handleSubmitPermit = (e) => { e.preventDefault(); 
+                // PENTING: Functional Update untuk setPermits
+                setPermits(prevPermits => [{ id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() }, ...prevPermits]); 
+                setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' }); alert("Pengajuan berhasil dikirim! Menunggu persetujuan admin."); 
+            };
 
             return (
                 <div className="max-w-2xl mx-auto space-y-6">
