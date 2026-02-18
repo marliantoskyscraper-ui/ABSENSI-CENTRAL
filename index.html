@@ -2,16 +2,21 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Aplikasi Absensi Online dengan Geolocation dan Selfie Verification">
+    <meta name="theme-color" content="#2563eb">
     <title>Sistem Absensi Pro</title>
     
-    <!-- Tailwind CSS (Untuk Styling) -->
+    <!-- Favicon (Ikon Tab Browser) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Babel (Untuk membaca JSX di browser) -->
+    <!-- Babel (Untuk membaca JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Import Map untuk mengatur sumber library -->
+    <!-- Import Map -->
     <script type="importmap">
     {
         "imports": {
@@ -21,8 +26,13 @@
         }
     }
     </script>
+
+    <style>
+        /* Mencegah scroll berlebih pada mobile saat ambil foto */
+        body { -webkit-tap-highlight-color: transparent; }
+    </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body class="bg-gray-50 text-gray-900 min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
@@ -53,7 +63,6 @@
             { id: 102, userId: 3, name: 'Siti Aminah', type: 'Masuk', timestamp: new Date(Date.now() - 86000000).toISOString(), location: '-6.2088, 106.8456', photo: null, status: 'On Time' },
         ];
 
-        // Komponen Format Tanggal Indonesia
         const formatDate = (dateString) => {
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
             return new Date(dateString).toLocaleDateString('id-ID', options);
@@ -112,28 +121,36 @@
             const [logs, setLogs] = useState(INITIAL_LOGS);
             const [announcements, setAnnouncements] = useState(INITIAL_ANNOUNCEMENTS);
             
-            // State Login
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [loginError, setLoginError] = useState('');
 
-            // Navigasi Sederhana
             const [activeTab, setActiveTab] = useState('dashboard');
+
+            // Cek session storage saat load (agar tidak logout saat refresh)
+            useEffect(() => {
+                const savedUser = sessionStorage.getItem('currentUser');
+                if (savedUser) {
+                    setCurrentUser(JSON.parse(savedUser));
+                }
+            }, []);
 
             const handleLogin = (e) => {
                 e.preventDefault();
                 const user = users.find(u => u.email === email && u.password === password);
                 if (user) {
-                setCurrentUser(user);
-                setLoginError('');
-                setActiveTab('dashboard');
+                    setCurrentUser(user);
+                    sessionStorage.setItem('currentUser', JSON.stringify(user)); // Simpan sesi
+                    setLoginError('');
+                    setActiveTab('dashboard');
                 } else {
-                setLoginError('Email atau password salah!');
+                    setLoginError('Email atau password salah!');
                 }
             };
 
             const handleLogout = () => {
                 setCurrentUser(null);
+                sessionStorage.removeItem('currentUser');
                 setEmail('');
                 setPassword('');
                 setActiveTab('dashboard');
@@ -193,7 +210,6 @@
 
             return (
                 <div className="min-h-screen bg-gray-50 flex flex-col">
-                {/* Header */}
                 <header className="bg-white shadow-sm sticky top-0 z-50">
                     <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-2">
@@ -213,7 +229,6 @@
                     </div>
                 </header>
 
-                {/* Main Content */}
                 <main className="flex-1 max-w-7xl w-full mx-auto p-4">
                     {currentUser.role === 'admin' ? (
                     <AdminDashboard 
@@ -242,20 +257,18 @@
             const [view, setView] = useState('overview'); // overview, employees, reports, announcements
             const [newUser, setNewUser] = useState({ name: '', email: '', department: '', role: 'employee' });
 
-            // Stats
             const todayLogs = logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
             const uniqueAttendees = new Set(todayLogs.map(l => l.userId)).size;
 
             const handleAddUser = (e) => {
                 e.preventDefault();
                 const id = users.length + 1;
-                setUsers([...users, { ...newUser, id, password: 'user' }]); // Default password
+                setUsers([...users, { ...newUser, id, password: 'user' }]);
                 setNewUser({ name: '', email: '', department: '', role: 'employee' });
                 alert('Karyawan berhasil ditambahkan!');
             };
 
             const handleExport = () => {
-                // Simulasi Export CSV
                 let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Tipe,Waktu,Lokasi\n";
                 logs.forEach(row => {
                 csvContent += `${row.id},${row.name},${row.type},${row.timestamp},"${row.location}"\n`;
@@ -280,7 +293,6 @@
 
             return (
                 <div className="space-y-6">
-                {/* Navigation Tabs */}
                 <div className="flex overflow-x-auto gap-2 pb-2">
                     {[
                     { id: 'overview', label: 'Dashboard', icon: Home },
@@ -307,7 +319,7 @@
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none">
                         <h3 className="text-blue-100 font-medium">Total Karyawan</h3>
-                        <p className="text-3xl font-bold mt-2">{users.length - 1}</p> {/* Exclude admin */}
+                        <p className="text-3xl font-bold mt-2">{users.length - 1}</p>
                     </Card>
                     <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none">
                         <h3 className="text-green-100 font-medium">Hadir Hari Ini</h3>
@@ -479,10 +491,8 @@
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // Filter logs for current user
             const myLogs = logs.filter(l => l.userId === user.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-            // Initialize Camera
             const startCamera = async () => {
                 try {
                 setIsCameraOpen(true);
@@ -496,7 +506,6 @@
                 }
             };
 
-            // Capture Photo
             const takePhoto = () => {
                 const video = videoRef.current;
                 const canvas = canvasRef.current;
@@ -508,7 +517,6 @@
                 const dataUrl = canvas.toDataURL('image/png');
                 setPhoto(dataUrl);
                 
-                // Stop stream
                 const stream = video.srcObject;
                 const tracks = stream.getTracks();
                 tracks.forEach(track => track.stop());
@@ -516,7 +524,6 @@
                 }
             };
 
-            // Get Location
             const getLocation = () => {
                 if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
@@ -565,7 +572,6 @@
             return (
                 <div className="max-w-2xl mx-auto space-y-6">
                 
-                {/* Welcome Card */}
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
                     <h2 className="text-2xl font-bold">Halo, {user.name} 👋</h2>
                     <p className="opacity-90 mt-1">{user.department} Department</p>
@@ -582,7 +588,6 @@
                     </div>
                 </div>
 
-                {/* Action Grid */}
                 <div className="grid grid-cols-3 gap-3">
                     <button onClick={() => setActiveTab('absen')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'absen' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}>
                         <Camera />
@@ -598,10 +603,8 @@
                     </button>
                 </div>
 
-                {/* Main Feature Area */}
                 {activeTab === 'absen' && (
                     <Card className="space-y-6">
-                    {/* Location Status */}
                     <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
                         <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${location ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
@@ -617,7 +620,6 @@
                         {location && <Badge type="success">Akurat</Badge>}
                     </div>
 
-                    {/* Camera Preview */}
                     <div className="relative bg-black rounded-xl overflow-hidden aspect-[4/3] flex items-center justify-center">
                         {!isCameraOpen && !photo && (
                             <div className="text-center">
@@ -634,7 +636,6 @@
                             <img src={photo} alt="Captured" className="w-full h-full object-cover" />
                         )}
 
-                        {/* Camera Controls */}
                         {isCameraOpen && (
                             <div className="absolute bottom-4 left-0 right-0 flex justify-center">
                                 <button onClick={takePhoto} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 flex items-center justify-center shadow-lg active:scale-95 transition">
@@ -644,7 +645,6 @@
                         )}
                     </div>
                         
-                    {/* Action Buttons */}
                     {photo && (
                         <div className="flex flex-col gap-3">
                             <Button variant="success" onClick={() => handleSubmitAttendance('Masuk')}>Absen Masuk</Button>
@@ -686,7 +686,6 @@
                     </div>
                 )}
 
-                {/* Pengumuman Widget */}
                 <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-2 text-yellow-800 font-bold">
                         <Bell size={18} />
@@ -707,7 +706,6 @@
             );
         }
 
-        // Render Aplikasi
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
