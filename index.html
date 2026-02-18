@@ -41,7 +41,7 @@
             Camera, MapPin, User, LogOut, FileText, 
             Users, Bell, Calendar, CheckCircle, XCircle, 
             Menu, Download, Upload, Clock, Home, AlertCircle, Coffee, Trash2,
-            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw
+            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Lock
         } from 'lucide-react';
 
         /**
@@ -52,11 +52,12 @@
             { 
                 id: 1, 
                 name: 'Administrator', 
-                email: 'admin@kantor.com', 
+                email: 'marliantoskyscraper@gmail.com', 
                 role: 'admin', 
-                password: '12345', 
+                password: 'abc12345', 
                 department: 'Management', 
                 position: 'Head Admin', 
+                location: 'PALANGKARAYA',
                 phone: '-' 
             },
             // AKUN KARYAWAN (MARLIANTO)
@@ -66,8 +67,9 @@
                 email: 'marlianto@kantor.com', 
                 role: 'employee', 
                 password: 'marli123', 
-                department: 'Operasional', 
+                department: 'PUPR', 
                 position: 'Staff', 
+                location: 'KOBAR',
                 phone: '-' 
             }
         ];
@@ -76,9 +78,10 @@
             { id: 1, title: 'Selamat Datang', content: 'Selamat datang di sistem absensi digital baru.', date: new Date().toISOString().split('T')[0] }
         ];
 
-        // LOGS DAN PERMITS DIMULAI KOSONG
         const INITIAL_LOGS = [];
         const INITIAL_PERMITS = [];
+
+        const LOCATIONS = ['KOBAR', 'LAMANDAU', 'SUKAMARA', 'PALANGKARAYA'];
 
         const formatDate = (dateString) => {
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
@@ -167,11 +170,14 @@
             useEffect(() => { localStorage.setItem('app_announcements', JSON.stringify(announcements)); }, [announcements]);
             useEffect(() => { localStorage.setItem('app_permits', JSON.stringify(permits)); }, [permits]);
             
-            // --- LOGIN LOGIC ---
+            // --- LOGIN, REGISTER & FORGOT PASSWORD LOGIC ---
 
-            const [email, setEmail] = useState('');
-            const [password, setPassword] = useState('');
-            const [loginError, setLoginError] = useState('');
+            const [authView, setAuthView] = useState('login'); // login, register, forgot
+            const [loginData, setLoginData] = useState({ email: '', password: '' });
+            const [registerData, setRegisterData] = useState({ name: '', email: '', password: '', department: '', position: '', location: '' });
+            const [forgotEmail, setForgotEmail] = useState('');
+            const [authError, setAuthError] = useState('');
+            const [authSuccess, setAuthSuccess] = useState('');
 
             useEffect(() => {
                 const savedUser = sessionStorage.getItem('currentUser');
@@ -182,25 +188,70 @@
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                const user = users.find(u => u.email === email && u.password === password);
+                const user = users.find(u => u.email === loginData.email && u.password === loginData.password);
                 if (user) {
                     setCurrentUser(user);
                     sessionStorage.setItem('currentUser', JSON.stringify(user));
-                    setLoginError('');
+                    setAuthError('');
                 } else {
-                    setLoginError('Email atau password salah! Jika baru update sistem, coba Reset Database di bawah.');
+                    setAuthError('Email atau password salah! Jika lupa, gunakan menu Lupa Password.');
+                }
+            };
+
+            const handleRegister = (e) => {
+                e.preventDefault();
+                // Cek email duplikat
+                if (users.find(u => u.email === registerData.email)) {
+                    setAuthError('Email sudah terdaftar! Silakan login.');
+                    return;
+                }
+
+                const newUser = {
+                    id: Date.now(),
+                    name: registerData.name,
+                    email: registerData.email,
+                    password: registerData.password,
+                    department: registerData.department,
+                    position: registerData.position,
+                    location: registerData.location,
+                    role: 'employee', 
+                    phone: '-'
+                };
+
+                setUsers([...users, newUser]); 
+                setAuthError('');
+                
+                // Otomatis isi form login
+                setLoginData({ email: registerData.email, password: registerData.password });
+                
+                alert('Pendaftaran Berhasil! Data login telah disinkronkan. Silakan klik tombol Masuk.');
+                setAuthView('login'); 
+                setRegisterData({ name: '', email: '', password: '', department: '', position: '', location: '' });
+            };
+
+            const handleForgotPassword = (e) => {
+                e.preventDefault();
+                const user = users.find(u => u.email === forgotEmail);
+                if (user) {
+                    setAuthError('');
+                    setAuthSuccess(`Akun ditemukan atas nama ${user.name}. Silakan hubungi Admin (marliantoskyscraper@gmail.com) untuk reset password.`);
+                } else {
+                    setAuthSuccess('');
+                    setAuthError('Email tidak ditemukan dalam sistem.');
                 }
             };
 
             const handleLogout = () => {
                 setCurrentUser(null);
                 sessionStorage.removeItem('currentUser');
-                setEmail('');
-                setPassword('');
+                setLoginData({ email: '', password: '' });
+                setAuthView('login');
+                setAuthSuccess('');
+                setAuthError('');
             };
 
             const handleResetSystem = () => {
-                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data (absensi, cuti, karyawan tambahan) dan mengembalikan ke User Awal (Admin & Marlianto). Lanjutkan?")) {
+                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data dan mengembalikan ke User Awal (Email Baru). Lanjutkan?")) {
                     localStorage.clear();
                     sessionStorage.clear();
                     window.location.reload();
@@ -211,52 +262,118 @@
                 return (
                 <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
                     <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
-                    <div className="bg-blue-600 p-8 text-center">
-                        <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-                        <CheckCircle size={32} className="text-white" />
+                        <div className="bg-blue-600 p-8 text-center">
+                            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                                <CheckCircle size={32} className="text-white" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-white">E-Absensi Pro</h1>
+                            <p className="text-blue-100 text-sm">Sistem Absensi Terintegrasi</p>
                         </div>
-                        <h1 className="text-2xl font-bold text-white">E-Absensi Pro</h1>
-                        <p className="text-blue-100 text-sm">Sistem Absensi Terintegrasi GPS & Selfie</p>
-                    </div>
                     
-                    <form onSubmit={handleLogin} className="p-8 space-y-4">
-                        {loginError && (
-                        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2">
-                            <AlertCircle size={16} /> <span>{loginError}</span>
-                        </div>
-                        )}
-                        <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input 
-                            type="email" 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="nama@kantor.com"
-                            required
-                        />
-                        </div>
-                        <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                        <input 
-                            type="password" 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="*****"
-                            required
-                        />
-                        </div>
-                        <Button className="w-full mt-4">Masuk Sistem</Button>
+                        <div className="p-8">
+                            {authError && (
+                                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-4">
+                                    <AlertCircle size={16} /> <span>{authError}</span>
+                                </div>
+                            )}
+                            {authSuccess && (
+                                <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-4">
+                                    <CheckCircle size={16} /> <span>{authSuccess}</span>
+                                </div>
+                            )}
 
-                        {/* TOMBOL RESET DATABASE */}
-                        <div className="text-center pt-4 border-t mt-4">
-                            <p className="text-xs text-gray-500 mb-2">Gagal login setelah update?</p>
-                            <button type="button" onClick={handleResetSystem} className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center justify-center gap-1 mx-auto transition-colors">
-                                <RefreshCw size={12} /> Reset Database & Cache
-                            </button>
+                            {authView === 'login' && (
+                                /* --- FORM LOGIN --- */
+                                <form onSubmit={handleLogin} className="space-y-4">
+                                    <h2 className="text-lg font-bold text-gray-800 text-center">Login Masuk</h2>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                        <input 
+                                            type="email" 
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                            value={loginData.email}
+                                            onChange={(e) => setLoginData({...loginData, email: e.target.value})}
+                                            placeholder="email@kantor.com"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                        <input 
+                                            type="password" 
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                            value={loginData.password}
+                                            onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                                            placeholder="*****"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="flex justify-end">
+                                        <button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); setAuthSuccess(''); }} className="text-xs text-blue-600 hover:underline">
+                                            Lupa Password?
+                                        </button>
+                                    </div>
+                                    <Button className="w-full mt-2">Masuk Sistem</Button>
+                                    
+                                    <div className="text-center mt-4">
+                                        <p className="text-sm text-gray-600">Belum punya akun?</p>
+                                        <button type="button" onClick={() => { setAuthView('register'); setAuthError(''); setAuthSuccess(''); }} className="text-blue-600 font-bold hover:underline text-sm mt-1 flex items-center justify-center gap-1 mx-auto">
+                                            <UserPlus size={14}/> Daftar Karyawan Baru
+                                        </button>
+                                    </div>
+
+                                    <div className="text-center pt-4 border-t mt-4">
+                                        <p className="text-xs text-gray-400 mb-1">Tidak bisa login admin baru?</p>
+                                        <button type="button" onClick={handleResetSystem} className="text-xs text-red-400 hover:text-red-600 flex items-center justify-center gap-1 mx-auto font-medium">
+                                            <RefreshCw size={10} /> Reset Database Awal
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+
+                            {authView === 'register' && (
+                                /* --- FORM REGISTER --- */
+                                <form onSubmit={handleRegister} className="space-y-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <button type="button" onClick={() => setAuthView('login')} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button>
+                                        <h2 className="text-lg font-bold text-gray-800">Pendaftaran Baru</h2>
+                                    </div>
+                                    
+                                    <input className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Nama Lengkap" value={registerData.name} onChange={(e) => setRegisterData({...registerData, name: e.target.value})} required />
+                                    <input type="email" className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Email Aktif" value={registerData.email} onChange={(e) => setRegisterData({...registerData, email: e.target.value})} required />
+                                    <input type="password" className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Password" value={registerData.password} onChange={(e) => setRegisterData({...registerData, password: e.target.value})} required />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Divisi (Cth: PUPR)" value={registerData.department} onChange={(e) => setRegisterData({...registerData, department: e.target.value})} required />
+                                        <input className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Jabatan" value={registerData.position} onChange={(e) => setRegisterData({...registerData, position: e.target.value})} required />
+                                    </div>
+                                    <select className="w-full px-3 py-2 border rounded-lg text-sm bg-white" value={registerData.location} onChange={(e) => setRegisterData({...registerData, location: e.target.value})} required >
+                                        <option value="">Pilih Lokasi Penempatan</option>
+                                        {LOCATIONS.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
+                                    </select>
+                                    <Button className="w-full mt-4" variant="success">Daftar Sekarang</Button>
+                                </form>
+                            )}
+
+                            {authView === 'forgot' && (
+                                /* --- FORM LUPA PASSWORD --- */
+                                <form onSubmit={handleForgotPassword} className="space-y-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <button type="button" onClick={() => { setAuthView('login'); setAuthError(''); setAuthSuccess(''); }} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button>
+                                        <h2 className="text-lg font-bold text-gray-800">Lupa Password</h2>
+                                    </div>
+                                    <p className="text-sm text-gray-600">Masukkan email Anda untuk verifikasi akun.</p>
+                                    <input 
+                                        type="email" 
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        value={forgotEmail}
+                                        onChange={(e) => setForgotEmail(e.target.value)}
+                                        placeholder="email@kantor.com"
+                                        required
+                                    />
+                                    <Button className="w-full" variant="warning">Cek Akun</Button>
+                                </form>
+                            )}
                         </div>
-                    </form>
                     </div>
                 </div>
                 );
@@ -315,15 +432,14 @@
 
         function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, permits, setPermits, handleResetSystem }) {
             const [view, setView] = useState('overview'); 
-            const [newUser, setNewUser] = useState({ name: '', email: '', department: '', position: '', role: 'employee' });
+            const [newUser, setNewUser] = useState({ name: '', email: '', department: '', position: '', location: '', role: 'employee' });
             
             const [startDate, setStartDate] = useState('');
             const [endDate, setEndDate] = useState('');
+            const [showPassword, setShowPassword] = useState({}); // State untuk toggle password
 
             const todayLogs = logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
             const uniqueAttendees = new Set(todayLogs.map(l => l.userId)).size;
-            
-            // Hitung izin pending
             const pendingPermits = permits.filter(p => p.status === 'Pending');
 
             const filteredLogs = logs.filter(log => {
@@ -337,81 +453,37 @@
                 return logDate >= start && logDate <= end;
             });
 
-            // --- PERMIT ACTIONS ---
-            const handlePermitAction = (id, status) => {
-                setPermits(permits.map(p => 
-                    p.id === id ? { ...p, status: status } : p
-                ));
-                alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`);
+            const togglePassword = (id) => {
+                setShowPassword(prev => ({ ...prev, [id]: !prev[id] }));
             };
 
+            const handleResetUserPassword = (userId) => {
+                const newPass = prompt("Masukkan password baru untuk user ini:");
+                if (newPass) {
+                    setUsers(users.map(u => u.id === userId ? { ...u, password: newPass } : u));
+                    alert("Password berhasil diubah!");
+                }
+            };
+
+            // ... (Fungsi Permit, Export, Backup, Restore, Email, Add User, Add Announcement sama seperti sebelumnya) ...
+            const handlePermitAction = (id, status) => { setPermits(permits.map(p => p.id === id ? { ...p, status: status } : p)); alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`); };
             const handleExportCSV = () => {
-                let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Divisi,Jabatan,Tipe,Waktu,Lokasi\n";
-                filteredLogs.forEach(row => {
-                    const user = users.find(u => u.id === row.userId) || {};
-                    csvContent += `${row.id},"${row.name}","${user.department || '-'}","${user.position || '-'}",${row.type},${row.timestamp},"${row.location}"\n`;
-                });
-                const encodedUri = encodeURI(csvContent);
-                const link = document.createElement("a");
-                link.setAttribute("href", encodedUri);
-                link.setAttribute("download", `Laporan_Absensi.csv`);
-                document.body.appendChild(link);
-                link.click();
+                let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Divisi,Jabatan,Lokasi_Kerja,Tipe,Waktu,Lokasi_Absen\n";
+                filteredLogs.forEach(row => { const user = users.find(u => u.id === row.userId) || {}; csvContent += `${row.id},"${row.name}","${user.department || '-'}","${user.position || '-'}","${user.location || '-'}",${row.type},${row.timestamp},"${row.location}"\n`; });
+                const encodedUri = encodeURI(csvContent); const link = document.createElement("a"); link.setAttribute("href", encodedUri); link.setAttribute("download", `Laporan_Absensi.csv`); document.body.appendChild(link); link.click();
             };
-
-            const handleBackupJSON = () => {
-                const backupData = { users, logs, announcements, permits, exportDate: new Date().toISOString() };
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData));
-                const link = document.createElement("a");
-                link.setAttribute("href", dataStr);
-                link.setAttribute("download", `BACKUP_FULL.json`);
-                document.body.appendChild(link);
-                link.click();
-            };
-
-            const handleRestoreJSON = (event) => {
-                const fileReader = new FileReader();
-                fileReader.readAsText(event.target.files[0], "UTF-8");
-                fileReader.onload = e => {
-                    try {
-                        const parsedData = JSON.parse(e.target.result);
-                        if(parsedData.users) {
-                            if(confirm("Restore data? Data saat ini akan ditimpa.")) {
-                                setUsers(parsedData.users);
-                                setLogs(parsedData.logs || []);
-                                setAnnouncements(parsedData.announcements || []);
-                                setPermits(parsedData.permits || []);
-                                alert("Restore berhasil!");
-                                window.location.reload();
-                            }
-                        }
-                    } catch (err) { alert("Gagal membaca file."); }
-                };
-            };
-
-            const handleEmailBackup = () => {
-                const subject = `Laporan Absensi`;
-                const body = `Halo Admin,\n\nTerlampir data absensi.\n\nTerima kasih.`;
-                window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-            };
-
-            const handleAddUser = (e) => {
-                e.preventDefault();
-                setUsers([...users, { ...newUser, id: users.length + 1, password: 'user' }]);
-                setNewUser({ name: '', email: '', department: '', position: '', role: 'employee' });
-                alert('Karyawan berhasil ditambahkan!');
-            };
-
-            const handleAddAnnouncement = (text) => {
-                setAnnouncements([{ id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }, ...announcements]);
-            };
+            const handleBackupJSON = () => { const backupData = { users, logs, announcements, permits, exportDate: new Date().toISOString() }; const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData)); const link = document.createElement("a"); link.setAttribute("href", dataStr); link.setAttribute("download", `BACKUP_FULL.json`); document.body.appendChild(link); link.click(); };
+            const handleRestoreJSON = (event) => { const fileReader = new FileReader(); fileReader.readAsText(event.target.files[0], "UTF-8"); fileReader.onload = e => { try { const parsedData = JSON.parse(e.target.result); if(parsedData.users) { if(confirm("Restore data? Data saat ini akan ditimpa.")) { setUsers(parsedData.users); setLogs(parsedData.logs || []); setAnnouncements(parsedData.announcements || []); setPermits(parsedData.permits || []); alert("Restore berhasil!"); window.location.reload(); } } } catch (err) { alert("Gagal membaca file."); } }; };
+            const handleEmailBackup = () => { handleExportCSV(); const emailTo = "karsasentana@gmail.com"; const subject = `Laporan Database Absensi - ${new Date().toLocaleDateString()}`; const body = `Halo Admin,\n\nBerikut adalah laporan database absensi terbaru dari sistem.\n\n(Mohon lampirkan file .csv yang baru saja terunduh secara otomatis)\n\nTerima kasih.`; window.location.href = `mailto:${emailTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; };
+            const handleAddUser = (e) => { e.preventDefault(); setUsers([...users, { ...newUser, id: users.length + 1, password: 'user' }]); setNewUser({ name: '', email: '', department: '', position: '', location: '', role: 'employee' }); alert('Karyawan berhasil ditambahkan!'); };
+            const handleAddAnnouncement = (text) => { setAnnouncements([{ id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }, ...announcements]); };
 
             return (
                 <div className="space-y-6">
                 <div className="flex overflow-x-auto gap-2 pb-2">
                     {[
                     { id: 'overview', label: 'Dashboard', icon: Home },
-                    { id: 'employees', label: 'Karyawan', icon: Users },
+                    { id: 'employees', label: 'Karyawan & Password', icon: Users },
                     { id: 'approvals', label: `Persetujuan (${pendingPermits.length})`, icon: ClipboardCheck },
                     { id: 'reports', label: 'Laporan', icon: FileText },
                     { id: 'announcements', label: 'Info', icon: Bell },
@@ -486,25 +558,44 @@
                     <div className="lg:col-span-2">
                         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                                <h3 className="font-bold text-gray-700">Daftar Karyawan</h3>
+                                <h3 className="font-bold text-gray-700">Daftar Karyawan & Password</h3>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left text-sm">
                                 <thead className="bg-gray-50 border-b">
                                     <tr>
-                                    <th className="p-3">Nama</th>
-                                    <th className="p-3">Email</th>
-                                    <th className="p-3">Divisi</th>
-                                    <th className="p-3">Jabatan</th>
+                                    <th className="p-3">Nama/Email</th>
+                                    <th className="p-3">Divisi/Lokasi</th>
+                                    <th className="p-3">Password</th>
+                                    <th className="p-3">Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {users.filter(u => u.role !== 'admin').map(u => (
                                     <tr key={u.id} className="border-b">
-                                        <td className="p-3 font-medium">{u.name}</td>
-                                        <td className="p-3 text-gray-500">{u.email}</td>
-                                        <td className="p-3"><Badge>{u.department}</Badge></td>
-                                        <td className="p-3 text-gray-600">{u.position || '-'}</td>
+                                        <td className="p-3">
+                                            <div className="font-medium text-gray-900">{u.name}</div>
+                                            <div className="text-xs text-gray-500">{u.email}</div>
+                                        </td>
+                                        <td className="p-3">
+                                            <div className="text-xs font-semibold">{u.department}</div>
+                                            <div className="text-xs text-gray-500">{u.location}</div>
+                                        </td>
+                                        <td className="p-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-xs">
+                                                    {showPassword[u.id] ? u.password : '••••••'}
+                                                </span>
+                                                <button onClick={() => togglePassword(u.id)} className="text-gray-400 hover:text-blue-600">
+                                                    {showPassword[u.id] ? <EyeOff size={14}/> : <Eye size={14}/>}
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="p-3">
+                                            <button onClick={() => handleResetUserPassword(u.id)} className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 flex items-center gap-1">
+                                                <Key size={12}/> Reset
+                                            </button>
+                                        </td>
                                     </tr>
                                     ))}
                                 </tbody>
@@ -518,8 +609,12 @@
                             <form onSubmit={handleAddUser} className="space-y-3">
                                 <input className="w-full p-2 border rounded text-sm" placeholder="Nama Lengkap" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required />
                                 <input className="w-full p-2 border rounded text-sm" type="email" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
-                                <input className="w-full p-2 border rounded text-sm" placeholder="Divisi" value={newUser.department} onChange={e => setNewUser({...newUser, department: e.target.value})} required />
+                                <input className="w-full p-2 border rounded text-sm" placeholder="Divisi (Cth: PUPR)" value={newUser.department} onChange={e => setNewUser({...newUser, department: e.target.value})} required />
                                 <input className="w-full p-2 border rounded text-sm" placeholder="Jabatan" value={newUser.position} onChange={e => setNewUser({...newUser, position: e.target.value})} required />
+                                <select className="w-full p-2 border rounded text-sm bg-white" value={newUser.location} onChange={(e) => setNewUser({...newUser, location: e.target.value})} required >
+                                    <option value="">Pilih Lokasi Penempatan</option>
+                                    {LOCATIONS.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
+                                </select>
                                 <Button className="w-full" variant="success">Simpan Data</Button>
                             </form>
                         </Card>
@@ -527,6 +622,7 @@
                     </div>
                 )}
 
+                {/* --- Other views (approvals, reports, announcements, database) same as before --- */}
                 {view === 'approvals' && (
                     <div className="space-y-4">
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
@@ -650,6 +746,7 @@
                         </Card>
                         <Card className="border-l-4 border-green-500">
                             <h3 className="font-bold text-lg mb-2">Email Laporan</h3>
+                            <p className="text-xs text-gray-500 mb-4">Kirim database ke: karsasentana@gmail.com</p>
                             <Button onClick={handleEmailBackup} className="w-full" variant="success">Kirim Email</Button>
                         </Card>
                         <Card className="border-l-4 border-purple-500">
@@ -671,8 +768,7 @@
             );
         }
 
-        // --- DASHBOARD KARYAWAN ---
-
+        // --- DASHBOARD KARYAWAN (Same as before) ---
         function EmployeeDashboard({ user, logs, setLogs, announcements, permits, setPermits }) {
             const [activeTab, setActiveTab] = useState('absen'); 
             const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -680,184 +776,31 @@
             const [photo, setPhoto] = useState(null);
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-
-            // State Form Izin
             const [permitForm, setPermitForm] = useState({ type: 'Sakit', startDate: '', endDate: '', reason: '' });
-
             const myLogs = logs.filter(l => l.userId === user.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
             const myPermits = permits.filter(p => p.userId === user.id).sort((a,b) => new Date(b.dateApplied) - new Date(a.dateApplied));
-
-            const startCamera = async () => {
-                try {
-                setIsCameraOpen(true);
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                if (videoRef.current) videoRef.current.srcObject = stream;
-                } catch (err) { alert("Gagal akses kamera."); }
-            };
-
-            const takePhoto = () => {
-                const video = videoRef.current;
-                const canvas = canvasRef.current;
-                if (video && canvas) {
-                    const context = canvas.getContext('2d');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    setPhoto(canvas.toDataURL('image/png'));
-                    video.srcObject.getTracks().forEach(track => track.stop());
-                    setIsCameraOpen(false);
-                }
-            };
-
-            const getLocation = () => {
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        (position) => setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }),
-                        () => alert("Gagal lokasi")
-                    );
-                }
-            };
-
+            const startCamera = async () => { try { setIsCameraOpen(true); const stream = await navigator.mediaDevices.getUserMedia({ video: true }); if (videoRef.current) videoRef.current.srcObject = stream; } catch (err) { alert("Gagal akses kamera."); } };
+            const takePhoto = () => { const video = videoRef.current; const canvas = canvasRef.current; if (video && canvas) { const context = canvas.getContext('2d'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; context.drawImage(video, 0, 0, canvas.width, canvas.height); setPhoto(canvas.toDataURL('image/png')); video.srcObject.getTracks().forEach(track => track.stop()); setIsCameraOpen(false); } };
+            const getLocation = () => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition( (position) => setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }), () => alert("Gagal lokasi") ); } };
             useEffect(() => { if (activeTab === 'absen') getLocation(); }, [activeTab]);
-
-            const handleSubmitAttendance = (type) => {
-                if (!location) return alert("Menunggu lokasi...");
-                if (!photo) return alert("Wajib foto!");
-                setLogs([{
-                    id: Date.now(), userId: user.id, name: user.name, type: type,
-                    timestamp: new Date().toISOString(),
-                    location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
-                    photo: photo, status: 'Hadir'
-                }, ...logs]);
-                setPhoto(null);
-                alert(`Absen ${type} Berhasil!`);
-            };
-
-            const handleSubmitPermit = (e) => {
-                e.preventDefault();
-                setPermits([{
-                    id: Date.now(),
-                    userId: user.id,
-                    name: user.name,
-                    type: permitForm.type,
-                    startDate: permitForm.startDate,
-                    endDate: permitForm.endDate,
-                    reason: permitForm.reason,
-                    status: 'Pending',
-                    dateApplied: new Date().toISOString()
-                }, ...permits]);
-                setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' });
-                alert("Pengajuan berhasil dikirim! Menunggu persetujuan admin.");
-            };
+            const handleSubmitAttendance = (type) => { if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); setLogs([{ id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' }, ...logs]); setPhoto(null); alert(`Absen ${type} Berhasil!`); };
+            const handleSubmitPermit = (e) => { e.preventDefault(); setPermits([{ id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() }, ...permits]); setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' }); alert("Pengajuan berhasil dikirim! Menunggu persetujuan admin."); };
 
             return (
                 <div className="max-w-2xl mx-auto space-y-6">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
                     <h2 className="text-2xl font-bold">Halo, {user.name} 👋</h2>
                     <p className="opacity-90 mt-1">{user.position} - {user.department}</p>
+                    <p className="text-xs mt-2 bg-white/20 inline-block px-2 py-1 rounded">Lokasi: {user.location || '-'}</p>
                 </div>
-
                 <div className="grid grid-cols-3 gap-3">
-                    <button onClick={() => setActiveTab('absen')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'absen' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}>
-                        <Camera /> <span className="text-xs font-bold">Absen</span>
-                    </button>
-                    <button onClick={() => setActiveTab('history')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'history' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}>
-                        <Clock /> <span className="text-xs font-bold">Riwayat</span>
-                    </button>
-                    <button onClick={() => setActiveTab('permit')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'permit' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}>
-                        <FileText /> <span className="text-xs font-bold">Izin/Cuti</span>
-                    </button>
+                    <button onClick={() => setActiveTab('absen')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'absen' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}> <Camera /> <span className="text-xs font-bold">Absen</span> </button>
+                    <button onClick={() => setActiveTab('history')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'history' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}> <Clock /> <span className="text-xs font-bold">Riwayat</span> </button>
+                    <button onClick={() => setActiveTab('permit')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'permit' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}> <FileText /> <span className="text-xs font-bold">Izin/Cuti</span> </button>
                 </div>
-
-                {activeTab === 'absen' && (
-                    <Card className="space-y-6">
-                    <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                        <div className="flex items-center gap-3"><MapPin size={16} /> <span className="text-sm font-bold">{location ? 'Lokasi Terkunci' : 'Mencari Lokasi...'}</span></div>
-                        {location && <Badge type="success">Akurat</Badge>}
-                    </div>
-                    <div className="relative bg-black rounded-xl overflow-hidden aspect-[4/3] flex items-center justify-center">
-                        {!isCameraOpen && !photo && <Button onClick={startCamera} variant="outline" className="bg-white/10 text-white border-white/20">Buka Kamera</Button>}
-                        {isCameraOpen && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>}
-                        {photo && <img src={photo} className="w-full h-full object-cover" />}
-                        {isCameraOpen && <div className="absolute bottom-4 left-0 right-0 flex justify-center"><button onClick={takePhoto} className="w-16 h-16 bg-white rounded-full border-4 flex items-center justify-center"><div className="w-12 h-12 bg-red-500 rounded-full"></div></button></div>}
-                    </div>
-                    {photo && <div className="flex flex-col gap-3">
-                        <Button variant="success" onClick={() => handleSubmitAttendance('Masuk')}>Absen Masuk</Button>
-                        <Button variant="warning" onClick={() => handleSubmitAttendance('Istirahat')}>Absen Istirahat</Button>
-                        <Button variant="danger" onClick={() => handleSubmitAttendance('Pulang')}>Absen Pulang</Button>
-                    </div>}
-                    {photo && <Button variant="outline" className="w-full" onClick={() => setPhoto(null)}>Foto Ulang</Button>}
-                    </Card>
-                )}
-
-                {activeTab === 'permit' && (
-                    <div className="space-y-6">
-                        <Card>
-                            <h3 className="font-bold text-gray-800 mb-4">Buat Pengajuan Baru</h3>
-                            <form onSubmit={handleSubmitPermit} className="space-y-3">
-                                <div>
-                                    <label className="text-xs font-bold text-gray-500">Jenis Izin</label>
-                                    <select className="w-full p-2 border rounded-lg mt-1" value={permitForm.type} onChange={e => setPermitForm({...permitForm, type: e.target.value})}>
-                                        <option value="Sakit">Sakit</option>
-                                        <option value="Izin">Izin (Keperluan Pribadi)</option>
-                                        <option value="Cuti Tahunan">Cuti Tahunan</option>
-                                        <option value="Cuti Melahirkan">Cuti Melahirkan</option>
-                                        <option value="Dinas Luar">Dinas Luar</option>
-                                    </select>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500">Mulai</label>
-                                        <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.startDate} onChange={e => setPermitForm({...permitForm, startDate: e.target.value})} />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500">Sampai</label>
-                                        <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.endDate} onChange={e => setPermitForm({...permitForm, endDate: e.target.value})} />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-gray-500">Alasan / Keterangan</label>
-                                    <textarea required className="w-full p-2 border rounded-lg mt-1 h-20" placeholder="Jelaskan alasan pengajuan..." value={permitForm.reason} onChange={e => setPermitForm({...permitForm, reason: e.target.value})}></textarea>
-                                </div>
-                                <Button className="w-full">Kirim Pengajuan</Button>
-                            </form>
-                        </Card>
-
-                        <div className="space-y-3">
-                            <h3 className="font-bold text-gray-700">Riwayat Pengajuan Saya</h3>
-                            {myPermits.length === 0 ? <p className="text-center text-gray-400 py-4">Belum ada pengajuan.</p> : myPermits.map(p => (
-                                <div key={p.id} className="bg-white p-4 rounded-xl border shadow-sm">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <Badge type="info">{p.type}</Badge>
-                                        <Badge type={p.status === 'Approved' ? 'success' : p.status === 'Rejected' ? 'danger' : 'warning'}>{p.status}</Badge>
-                                    </div>
-                                    <p className="text-sm font-bold text-gray-800">{formatSimpleDate(p.startDate)} - {formatSimpleDate(p.endDate)}</p>
-                                    <p className="text-sm text-gray-600 mt-1">{p.reason}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'history' && (
-                    <div className="space-y-4">
-                        <h3 className="font-bold text-gray-700">Riwayat Absensi</h3>
-                        {myLogs.length === 0 ? <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">Belum ada riwayat.</div> : 
-                            myLogs.map(log => (
-                                <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border flex items-center gap-4">
-                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${log.type === 'Masuk' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                        {log.type === 'Masuk' ? <LogOut className="rotate-180" size={20} /> : <LogOut size={20} />}
-                                    </div>
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-gray-800">{log.type}</h4>
-                                        <p className="text-xs text-gray-500">{formatDate(log.timestamp)}</p>
-                                    </div>
-                                    {log.photo && <img src={log.photo} className="w-12 h-12 rounded-lg object-cover border" />}
-                                </div>
-                            ))
-                        }
-                    </div>
-                )}
+                {activeTab === 'absen' && ( <Card className="space-y-6"> <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg"> <div className="flex items-center gap-3"><MapPin size={16} /> <span className="text-sm font-bold">{location ? 'Lokasi Terkunci' : 'Mencari Lokasi...'}</span></div> {location && <Badge type="success">Akurat</Badge>} </div> <div className="relative bg-black rounded-xl overflow-hidden aspect-[4/3] flex items-center justify-center"> {!isCameraOpen && !photo && <Button onClick={startCamera} variant="outline" className="bg-white/10 text-white border-white/20">Buka Kamera</Button>} {isCameraOpen && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>} {photo && <img src={photo} className="w-full h-full object-cover" />} {isCameraOpen && <div className="absolute bottom-4 left-0 right-0 flex justify-center"><button onClick={takePhoto} className="w-16 h-16 bg-white rounded-full border-4 flex items-center justify-center"><div className="w-12 h-12 bg-red-500 rounded-full"></div></button></div>} </div> {photo && <div className="flex flex-col gap-3"> <Button variant="success" onClick={() => handleSubmitAttendance('Masuk')}>Absen Masuk</Button> <Button variant="warning" onClick={() => handleSubmitAttendance('Istirahat')}>Absen Istirahat</Button> <Button variant="danger" onClick={() => handleSubmitAttendance('Pulang')}>Absen Pulang</Button> </div>} {photo && <Button variant="outline" className="w-full" onClick={() => setPhoto(null)}>Foto Ulang</Button>} </Card> )}
+                {activeTab === 'permit' && ( <div className="space-y-6"> <Card> <h3 className="font-bold text-gray-800 mb-4">Buat Pengajuan Baru</h3> <form onSubmit={handleSubmitPermit} className="space-y-3"> <div> <label className="text-xs font-bold text-gray-500">Jenis Izin</label> <select className="w-full p-2 border rounded-lg mt-1" value={permitForm.type} onChange={e => setPermitForm({...permitForm, type: e.target.value})}> <option value="Sakit">Sakit</option> <option value="Izin">Izin (Keperluan Pribadi)</option> <option value="Cuti Tahunan">Cuti Tahunan</option> <option value="Cuti Melahirkan">Cuti Melahirkan</option> <option value="Dinas Luar">Dinas Luar</option> </select> </div> <div className="grid grid-cols-2 gap-2"> <div> <label className="text-xs font-bold text-gray-500">Mulai</label> <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.startDate} onChange={e => setPermitForm({...permitForm, startDate: e.target.value})} /> </div> <div> <label className="text-xs font-bold text-gray-500">Sampai</label> <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.endDate} onChange={e => setPermitForm({...permitForm, endDate: e.target.value})} /> </div> </div> <div> <label className="text-xs font-bold text-gray-500">Alasan / Keterangan</label> <textarea required className="w-full p-2 border rounded-lg mt-1 h-20" placeholder="Jelaskan alasan pengajuan..." value={permitForm.reason} onChange={e => setPermitForm({...permitForm, reason: e.target.value})}></textarea> </div> <Button className="w-full">Kirim Pengajuan</Button> </form> </Card> <div className="space-y-3"> <h3 className="font-bold text-gray-700">Riwayat Pengajuan Saya</h3> {myPermits.length === 0 ? <p className="text-center text-gray-400 py-4">Belum ada pengajuan.</p> : myPermits.map(p => ( <div key={p.id} className="bg-white p-4 rounded-xl border shadow-sm"> <div className="flex justify-between items-start mb-2"> <Badge type="info">{p.type}</Badge> <Badge type={p.status === 'Approved' ? 'success' : p.status === 'Rejected' ? 'danger' : 'warning'}>{p.status}</Badge> </div> <p className="text-sm font-bold text-gray-800">{formatSimpleDate(p.startDate)} - {formatSimpleDate(p.endDate)}</p> <p className="text-sm text-gray-600 mt-1">{p.reason}</p> </div> ))} </div> </div> )}
+                {activeTab === 'history' && ( <div className="space-y-4"> <h3 className="font-bold text-gray-700">Riwayat Absensi</h3> {myLogs.length === 0 ? <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">Belum ada riwayat.</div> : myLogs.map(log => ( <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border flex items-center gap-4"> <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${log.type === 'Masuk' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}> {log.type === 'Masuk' ? <LogOut className="rotate-180" size={20} /> : <LogOut size={20} />} </div> <div className="flex-1"> <h4 className="font-bold text-gray-800">{log.type}</h4> <p className="text-xs text-gray-500">{formatDate(log.timestamp)}</p> </div> {log.photo && <img src={log.photo} className="w-12 h-12 rounded-lg object-cover border" />} </div> )) } </div> )}
                 <canvas ref={canvasRef} className="hidden"></canvas>
                 </div>
             );
