@@ -41,7 +41,8 @@
         import { 
             Camera, MapPin, User, LogOut, FileText, 
             Users, Bell, Calendar, CheckCircle, XCircle, 
-            Menu, Download, Upload, Clock, Home, AlertCircle, Coffee 
+            Menu, Download, Upload, Clock, Home, AlertCircle, Coffee, Trash2,
+            Database, Save, Mail, HardDrive
         } from 'lucide-react';
 
         /**
@@ -117,17 +118,37 @@
 
         function App() {
             const [currentUser, setCurrentUser] = useState(null);
-            const [users, setUsers] = useState(INITIAL_USERS);
-            const [logs, setLogs] = useState(INITIAL_LOGS);
-            const [announcements, setAnnouncements] = useState(INITIAL_ANNOUNCEMENTS);
             
+            // --- STATE DENGAN PERSISTENCE (LOCAL STORAGE) ---
+            
+            const [users, setUsers] = useState(() => {
+                const saved = localStorage.getItem('app_users');
+                return saved ? JSON.parse(saved) : INITIAL_USERS;
+            });
+            
+            const [logs, setLogs] = useState(() => {
+                const saved = localStorage.getItem('app_logs');
+                return saved ? JSON.parse(saved) : INITIAL_LOGS;
+            });
+
+            const [announcements, setAnnouncements] = useState(() => {
+                const saved = localStorage.getItem('app_announcements');
+                return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
+            });
+
+            // Simpan ke LocalStorage setiap kali ada perubahan data
+            useEffect(() => { localStorage.setItem('app_users', JSON.stringify(users)); }, [users]);
+            useEffect(() => { localStorage.setItem('app_logs', JSON.stringify(logs)); }, [logs]);
+            useEffect(() => { localStorage.setItem('app_announcements', JSON.stringify(announcements)); }, [announcements]);
+            
+            // --- LOGIN LOGIC ---
+
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [loginError, setLoginError] = useState('');
 
             const [activeTab, setActiveTab] = useState('dashboard');
 
-            // Cek session storage saat load (agar tidak logout saat refresh)
             useEffect(() => {
                 const savedUser = sessionStorage.getItem('currentUser');
                 if (savedUser) {
@@ -140,7 +161,7 @@
                 const user = users.find(u => u.email === email && u.password === password);
                 if (user) {
                     setCurrentUser(user);
-                    sessionStorage.setItem('currentUser', JSON.stringify(user)); // Simpan sesi
+                    sessionStorage.setItem('currentUser', JSON.stringify(user));
                     setLoginError('');
                     setActiveTab('dashboard');
                 } else {
@@ -155,6 +176,14 @@
                 setPassword('');
                 setActiveTab('dashboard');
             };
+
+            const handleResetSystem = () => {
+                if(confirm("PERINGATAN: Semua data absensi dan user akan dihapus permanen. Lanjutkan?")) {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.reload();
+                }
+            }
 
             if (!currentUser) {
                 return (
@@ -222,8 +251,8 @@
                         <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
                         <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
                         </div>
-                        <button onClick={handleLogout} className="p-2 hover:bg-gray-100 rounded-full text-red-500">
-                        <LogOut size={20} />
+                        <button onClick={handleLogout} className="p-2 hover:bg-gray-100 rounded-full text-red-500" title="Logout">
+                            <LogOut size={20} />
                         </button>
                     </div>
                     </div>
@@ -235,8 +264,10 @@
                         users={users} 
                         setUsers={setUsers} 
                         logs={logs} 
+                        setLogs={setLogs}
                         announcements={announcements}
                         setAnnouncements={setAnnouncements}
+                        handleResetSystem={handleResetSystem}
                     />
                     ) : (
                     <EmployeeDashboard 
@@ -253,12 +284,76 @@
 
         // --- DASHBOARD ADMIN ---
 
-        function AdminDashboard({ users, setUsers, logs, announcements, setAnnouncements }) {
-            const [view, setView] = useState('overview'); // overview, employees, reports, announcements
+        function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, handleResetSystem }) {
+            const [view, setView] = useState('overview'); // overview, employees, reports, announcements, database
             const [newUser, setNewUser] = useState({ name: '', email: '', department: '', role: 'employee' });
 
             const todayLogs = logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
             const uniqueAttendees = new Set(todayLogs.map(l => l.userId)).size;
+
+            // --- FUNGSI DATABASE & EMAIL ---
+
+            const handleExportCSV = () => {
+                let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Tipe,Waktu,Lokasi\n";
+                logs.forEach(row => {
+                    csvContent += `${row.id},${row.name},${row.type},${row.timestamp},"${row.location}"\n`;
+                });
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `Laporan_Absensi_${new Date().toISOString().slice(0,10)}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                return link;
+            };
+
+            const handleBackupJSON = () => {
+                const backupData = {
+                    users,
+                    logs,
+                    announcements,
+                    exportDate: new Date().toISOString()
+                };
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData));
+                const link = document.createElement("a");
+                link.setAttribute("href", dataStr);
+                link.setAttribute("download", `BACKUP_ABSENSI_${new Date().toISOString().slice(0,10)}.json`);
+                document.body.appendChild(link);
+                link.click();
+            };
+
+            const handleRestoreJSON = (event) => {
+                const fileReader = new FileReader();
+                fileReader.readAsText(event.target.files[0], "UTF-8");
+                fileReader.onload = e => {
+                    try {
+                        const parsedData = JSON.parse(e.target.result);
+                        if(parsedData.users && parsedData.logs) {
+                            if(confirm(`Restore data dari tanggal ${new Date(parsedData.exportDate).toLocaleDateString()}? Data saat ini akan ditimpa.`)) {
+                                setUsers(parsedData.users);
+                                setLogs(parsedData.logs);
+                                setAnnouncements(parsedData.announcements || []);
+                                alert("Restore berhasil! Halaman akan dimuat ulang.");
+                                window.location.reload();
+                            }
+                        } else {
+                            alert("Format file tidak valid!");
+                        }
+                    } catch (err) {
+                        alert("Gagal membaca file backup.");
+                    }
+                };
+            };
+
+            const handleEmailBackup = () => {
+                // 1. Download File dulu
+                handleExportCSV();
+                
+                // 2. Buka Email Client
+                const subject = `Backup Database Absensi - ${new Date().toLocaleDateString()}`;
+                const body = `Halo Admin,\n\nTerlampir adalah data laporan absensi terbaru.\n\n(Mohon lampirkan file .csv yang baru saja terunduh secara otomatis ke email ini sebelum mengirim)\n\nTerima kasih.`;
+                window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            };
 
             const handleAddUser = (e) => {
                 e.preventDefault();
@@ -266,19 +361,6 @@
                 setUsers([...users, { ...newUser, id, password: 'user' }]);
                 setNewUser({ name: '', email: '', department: '', role: 'employee' });
                 alert('Karyawan berhasil ditambahkan!');
-            };
-
-            const handleExport = () => {
-                let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Tipe,Waktu,Lokasi\n";
-                logs.forEach(row => {
-                csvContent += `${row.id},${row.name},${row.type},${row.timestamp},"${row.location}"\n`;
-                });
-                const encodedUri = encodeURI(csvContent);
-                const link = document.createElement("a");
-                link.setAttribute("href", encodedUri);
-                link.setAttribute("download", "laporan_absensi.csv");
-                document.body.appendChild(link);
-                link.click();
             };
 
             const handleAddAnnouncement = (text) => {
@@ -293,26 +375,29 @@
 
             return (
                 <div className="space-y-6">
-                <div className="flex overflow-x-auto gap-2 pb-2">
-                    {[
-                    { id: 'overview', label: 'Dashboard', icon: Home },
-                    { id: 'employees', label: 'Data Karyawan', icon: Users },
-                    { id: 'reports', label: 'Laporan Absensi', icon: FileText },
-                    { id: 'announcements', label: 'Pengumuman', icon: Bell },
-                    ].map((tab) => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setView(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition ${
-                        view === tab.id 
-                            ? 'bg-blue-600 text-white shadow-md' 
-                            : 'bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                    >
-                        <tab.icon size={18} />
-                        {tab.label}
-                    </button>
-                    ))}
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                    <div className="flex overflow-x-auto gap-2 pb-2">
+                        {[
+                        { id: 'overview', label: 'Dashboard', icon: Home },
+                        { id: 'employees', label: 'Karyawan', icon: Users },
+                        { id: 'reports', label: 'Laporan', icon: FileText },
+                        { id: 'announcements', label: 'Info', icon: Bell },
+                        { id: 'database', label: 'Database', icon: Database }, // Tab Baru
+                        ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setView(tab.id)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition ${
+                            view === tab.id 
+                                ? 'bg-blue-600 text-white shadow-md' 
+                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            <tab.icon size={18} />
+                            {tab.label}
+                        </button>
+                        ))}
+                    </div>
                 </div>
 
                 {view === 'overview' && (
@@ -366,7 +451,7 @@
                         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                                 <h3 className="font-bold text-gray-700">Daftar Karyawan</h3>
-                                <Button variant="outline" icon={Upload} onClick={() => alert("Fitur Import Excel akan membuka file dialog.")}>Import Excel</Button>
+                                <Button variant="outline" icon={Upload} onClick={() => alert("Gunakan menu Database untuk Import/Export data.")}>Import Excel</Button>
                             </div>
                             <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50 border-b">
@@ -417,7 +502,7 @@
                     <div className="space-y-4">
                         <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
                             <h2 className="font-bold text-gray-700">Laporan Kehadiran</h2>
-                            <Button icon={Download} onClick={handleExport}>Export ke Excel</Button>
+                            <Button icon={Download} onClick={handleExportCSV}>Export ke Excel</Button>
                         </div>
                         <div className="bg-white rounded-xl shadow-sm border overflow-hidden overflow-x-auto">
                             <table className="w-full text-left text-sm">
@@ -431,7 +516,7 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                {logs.map(log => (
+                                {logs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).map(log => (
                                     <tr key={log.id} className="border-b hover:bg-gray-50">
                                     <td className="p-4">{new Date(log.timestamp).toLocaleDateString()}</td>
                                     <td className="p-4 font-medium">{log.name}</td>
@@ -474,6 +559,75 @@
                                 </div>
                             ))}
                         </div>
+                    </div>
+                )}
+
+                {/* --- TAB DATABASE & BACKUP --- */}
+                {view === 'database' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {/* Backup ke File */}
+                        <Card className="border-l-4 border-blue-500">
+                            <div className="flex items-center gap-3 mb-4 text-blue-700">
+                                <Save size={24} />
+                                <h3 className="font-bold text-lg">Backup Database</h3>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Download seluruh data (User, Absensi, Pengumuman) dalam satu file JSON. Simpan file ini di Google Drive Anda.
+                            </p>
+                            <Button onClick={handleBackupJSON} className="w-full" variant="primary">
+                                Download Backup (.json)
+                            </Button>
+                        </Card>
+
+                        {/* Kirim ke Email */}
+                        <Card className="border-l-4 border-green-500">
+                            <div className="flex items-center gap-3 mb-4 text-green-700">
+                                <Mail size={24} />
+                                <h3 className="font-bold text-lg">Kirim Laporan ke Email</h3>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Download laporan Excel/CSV dan otomatis buka aplikasi email untuk mengirimkannya ke diri sendiri.
+                            </p>
+                            <Button onClick={handleEmailBackup} className="w-full" variant="success">
+                                Download & Email
+                            </Button>
+                        </Card>
+
+                        {/* Restore Data */}
+                        <Card className="border-l-4 border-purple-500">
+                            <div className="flex items-center gap-3 mb-4 text-purple-700">
+                                <Upload size={24} />
+                                <h3 className="font-bold text-lg">Restore Database</h3>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Punya file backup? Upload di sini untuk mengembalikan data absensi yang hilang atau pindah perangkat.
+                            </p>
+                            <div className="relative">
+                                <input 
+                                    type="file" 
+                                    accept=".json"
+                                    onChange={handleRestoreJSON}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                                <Button className="w-full" variant="outline">
+                                    Pilih File Backup (.json)
+                                </Button>
+                            </div>
+                        </Card>
+
+                        {/* Reset Data */}
+                        <Card className="border-l-4 border-red-500 md:col-span-3">
+                            <div className="flex items-center gap-3 mb-4 text-red-700">
+                                <Trash2 size={24} />
+                                <h3 className="font-bold text-lg">Zona Bahaya</h3>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600">
+                                    Menghapus semua data dari browser ini. Lakukan hanya jika terjadi error parah.
+                                </p>
+                                <Button onClick={handleResetSystem} variant="danger">Reset Total Sistem</Button>
+                            </div>
+                        </Card>
                     </div>
                 )}
                 </div>
@@ -564,9 +718,10 @@
                 status: 'Hadir'
                 };
 
+                // PENTING: setLogs akan memicu useEffect di App untuk menyimpan ke LocalStorage
                 setLogs([newLog, ...logs]);
                 setPhoto(null);
-                alert(`Absen ${type} Berhasil!`);
+                alert(`Absen ${type} Berhasil! Data tersimpan.`);
             };
 
             return (
