@@ -41,35 +41,15 @@
             Camera, MapPin, User, LogOut, FileText, 
             Users, Bell, Calendar, CheckCircle, XCircle, 
             Menu, Download, Upload, Clock, Home, AlertCircle, Coffee, Trash2,
-            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Lock, Activity, Cloud, Link2
+            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Lock, Activity, Cloud, Link2, DownloadCloud
         } from 'lucide-react';
 
         /**
-         * INITIAL DATA - AKUN DEMO (HANYA 2)
+         * INITIAL DATA
          */
         const INITIAL_USERS = [
-            { 
-                id: 1, 
-                name: 'Administrator', 
-                email: 'marliantoskyscraper@gmail.com', 
-                role: 'admin', 
-                password: 'abc12345', 
-                department: 'Management', 
-                position: 'Head Admin', 
-                location: 'PALANGKARAYA', 
-                phone: '-' 
-            },
-            { 
-                id: 2, 
-                name: 'Marlianto', 
-                email: 'marlianto@kantor.com', 
-                role: 'employee', 
-                password: 'marli123', 
-                department: 'PUPR', 
-                position: 'Staff', 
-                location: 'KOBAR', 
-                phone: '-' 
-            }
+            { id: 1, name: 'Administrator', email: 'marliantoskyscraper@gmail.com', role: 'admin', password: 'abc12345', department: 'Management', position: 'Head Admin', location: 'PALANGKARAYA', phone: '-' },
+            { id: 2, name: 'Marlianto', email: 'marlianto@kantor.com', role: 'employee', password: 'marli123', department: 'PUPR', position: 'Staff', location: 'KOBAR', phone: '-' }
         ];
 
         const INITIAL_ANNOUNCEMENTS = [
@@ -84,11 +64,11 @@
 
         const formatDate = (dateString) => {
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-            return new Date(dateString).toLocaleDateString('id-ID', options);
+            try { return new Date(dateString).toLocaleDateString('id-ID', options); } catch(e) { return dateString; }
         };
 
         const formatSimpleDate = (dateString) => {
-            return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+            try { return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }); } catch(e) { return dateString; }
         };
 
         // --- KOMPONEN UI DASAR ---
@@ -137,30 +117,10 @@
                     return saved ? JSON.parse(saved) : INITIAL_USERS;
                 } catch { return INITIAL_USERS; }
             });
-            const [logs, setLogs] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('app_logs');
-                    return saved ? JSON.parse(saved) : INITIAL_LOGS;
-                } catch { return INITIAL_LOGS; }
-            });
-            const [announcements, setAnnouncements] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('app_announcements');
-                    return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
-                } catch { return INITIAL_ANNOUNCEMENTS; }
-            });
-            const [permits, setPermits] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('app_permits');
-                    return saved ? JSON.parse(saved) : INITIAL_PERMITS;
-                } catch { return INITIAL_PERMITS; }
-            });
-            const [config, setConfig] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('app_config');
-                    return saved ? JSON.parse(saved) : INITIAL_CONFIG;
-                } catch { return INITIAL_CONFIG; }
-            });
+            const [logs, setLogs] = useState(() => JSON.parse(localStorage.getItem('app_logs')) || INITIAL_LOGS);
+            const [announcements, setAnnouncements] = useState(() => JSON.parse(localStorage.getItem('app_announcements')) || INITIAL_ANNOUNCEMENTS);
+            const [permits, setPermits] = useState(() => JSON.parse(localStorage.getItem('app_permits')) || INITIAL_PERMITS);
+            const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('app_config')) || INITIAL_CONFIG);
 
             // --- FUNGSI UPDATE DATA & SYNC ---
             const updateData = (key, data) => {
@@ -177,7 +137,7 @@
                 localStorage.setItem('app_sync_token', token);
             };
 
-            // --- CLOUD SYNC FUNCTION (GOOGLE SHEETS) ---
+            // --- CLOUD PUSH (Kirim ke Google Sheets) ---
             const pushToGoogleSheets = async (payload) => {
                 if (!config.googleScriptUrl) return; 
                 try {
@@ -193,9 +153,37 @@
                 }
             };
 
+            // --- CLOUD PULL (Tarik dari Google Sheets) ---
+            const pullFromGoogleSheets = async () => {
+                if (!config.googleScriptUrl) return alert("Harap isi URL Google Script di menu Database!");
+                
+                try {
+                    const response = await fetch(config.googleScriptUrl);
+                    const cloudLogs = await response.json();
+                    
+                    if (Array.isArray(cloudLogs) && cloudLogs.length > 0) {
+                        // Gabungkan data cloud dengan data lokal, hindari duplikat berdasarkan ID/Waktu
+                        const existingIds = new Set(logs.map(l => new Date(l.timestamp).getTime()));
+                        const newLogs = cloudLogs.filter(cl => !existingIds.has(new Date(cl.timestamp).getTime()));
+                        
+                        if (newLogs.length > 0) {
+                            const mergedLogs = [...newLogs, ...logs].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                            updateData('logs', mergedLogs);
+                            alert(`Berhasil menarik ${newLogs.length} data baru dari Cloud!`);
+                        } else {
+                            alert("Data sudah sinkron. Tidak ada data baru di Cloud.");
+                        }
+                    } else {
+                        alert("Tidak ada data di Google Sheets atau format salah.");
+                    }
+                } catch (error) {
+                    console.error(error);
+                    alert("Gagal menarik data. Pastikan URL benar dan fungsi doGet() sudah ada di Apps Script.");
+                }
+            };
+
             // --- REAL-TIME SYNC & AUTO-FIX USER DATA ---
             useEffect(() => {
-                // LOGIKA PERBAIKAN AKUN (AUTO-FIX)
                 const currentUsers = JSON.parse(localStorage.getItem('app_users')) || [];
                 let needsUpdate = false;
                 let updatedUsersList = [...currentUsers];
@@ -218,7 +206,6 @@
                     updateData('users', updatedUsersList);
                 }
 
-                // Polling Check untuk Sync Antar Tab
                 const checkUpdates = () => {
                     const currentToken = localStorage.getItem('app_sync_token');
                     if (currentToken && currentToken !== lastSyncToken.current) {
@@ -253,26 +240,22 @@
                 e.preventDefault();
                 const emailInput = loginData.email.trim().toLowerCase();
                 const passInput = loginData.password.trim();
-
                 const user = users.find(u => u.email.toLowerCase() === emailInput && u.password === passInput);
-                
                 if (user) {
                     setCurrentUser(user);
                     sessionStorage.setItem('currentUser', JSON.stringify(user));
                     setAuthError('');
                 } else {
-                    setAuthError('Email atau password salah! Coba tombol Reset di bawah jika yakin benar.');
+                    setAuthError('Email atau password salah!');
                 }
             };
 
             const handleRegister = (e) => {
                 e.preventDefault();
                 const emailInput = registerData.email.trim();
-                
                 if (users.find(u => u.email.toLowerCase() === emailInput.toLowerCase())) {
                     setAuthError('Email sudah terdaftar!'); return;
                 }
-                
                 const newUser = { 
                     id: Date.now(), 
                     name: registerData.name, 
@@ -284,11 +267,8 @@
                     role: 'employee', 
                     phone: '-' 
                 };
-                
-                const newUsersList = [...users, newUser];
-                updateData('users', newUsersList);
+                updateData('users', [...users, newUser]);
                 pushToGoogleSheets({ name: newUser.name, type: 'Registrasi Baru', status: 'User', location: newUser.location, info: newUser.email });
-
                 setAuthError('');
                 setLoginData({ email: emailInput, password: registerData.password });
                 alert('Pendaftaran Berhasil! Silakan klik Masuk.');
@@ -299,22 +279,13 @@
             const handleForgotPassword = (e) => {
                 e.preventDefault();
                 const user = users.find(u => u.email.toLowerCase() === forgotEmail.trim().toLowerCase());
-                if (user) {
-                    setAuthError('');
-                    setAuthSuccess(`Akun ditemukan: ${user.name}. Hubungi Admin untuk reset.`);
-                } else {
-                    setAuthSuccess('');
-                    setAuthError('Email tidak ditemukan.');
-                }
+                if (user) { setAuthError(''); setAuthSuccess(`Akun ditemukan: ${user.name}. Hubungi Admin untuk reset.`); } 
+                else { setAuthSuccess(''); setAuthError('Email tidak ditemukan.'); }
             };
 
             const handleLogout = () => {
-                setCurrentUser(null);
-                sessionStorage.removeItem('currentUser');
-                setLoginData({ email: '', password: '' });
-                setAuthView('login');
-                setAuthSuccess('');
-                setAuthError('');
+                setCurrentUser(null); sessionStorage.removeItem('currentUser');
+                setLoginData({ email: '', password: '' }); setAuthView('login');
             };
 
             const handleResetSystem = () => {
@@ -324,11 +295,10 @@
             }
 
             const manualSync = () => {
-                // Membaca ulang dari storage untuk memastikan data terbaru
                 setLogs(JSON.parse(localStorage.getItem('app_logs') || '[]'));
                 setUsers(JSON.parse(localStorage.getItem('app_users') || '[]'));
                 setPermits(JSON.parse(localStorage.getItem('app_permits') || '[]'));
-                alert("Data berhasil dimuat ulang dari database!");
+                alert("Data lokal berhasil dimuat ulang!");
             };
 
             if (!currentUser) {
@@ -354,12 +324,7 @@
                                     <div className="flex justify-end"><button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); }} className="text-xs text-blue-600 hover:underline">Lupa Password?</button></div>
                                     <Button className="w-full mt-2">Masuk Sistem</Button>
                                     <div className="text-center mt-4"><p className="text-sm text-gray-600">Belum punya akun?</p><button type="button" onClick={() => { setAuthView('register'); setAuthError(''); }} className="text-blue-600 font-bold hover:underline text-sm mt-1 flex items-center justify-center gap-1 mx-auto"><UserPlus size={14}/> Daftar Karyawan Baru</button></div>
-                                    
-                                    <div className="text-center pt-4 border-t mt-4">
-                                        <button type="button" onClick={handleResetSystem} className="text-xs text-red-300 hover:text-red-500 flex items-center justify-center gap-1 mx-auto" title="Klik ini jika login gagal terus">
-                                            <RefreshCw size={10} /> Reset Database Awal
-                                        </button>
-                                    </div>
+                                    <div className="text-center pt-4 border-t mt-4"><button type="button" onClick={handleResetSystem} className="text-xs text-red-300 hover:text-red-500 flex items-center justify-center gap-1 mx-auto"><RefreshCw size={10} /> Reset Database Awal</button></div>
                                 </form>
                             )}
                             {authView === 'register' && (
@@ -403,7 +368,7 @@
                 </header>
                 <main className="flex-1 max-w-7xl w-full mx-auto p-4">
                     {currentUser.role === 'admin' ? (
-                    <AdminDashboard users={users} logs={logs} announcements={announcements} permits={permits} config={config} updateData={updateData} handleResetSystem={handleResetSystem} manualSync={manualSync} />
+                    <AdminDashboard users={users} logs={logs} announcements={announcements} permits={permits} config={config} updateData={updateData} handleResetSystem={handleResetSystem} manualSync={manualSync} pullFromGoogleSheets={pullFromGoogleSheets} />
                     ) : (
                     <EmployeeDashboard user={currentUser} logs={logs} announcements={announcements} permits={permits} updateData={updateData} pushToGoogleSheets={pushToGoogleSheets} />
                     )}
@@ -414,7 +379,7 @@
 
         // --- DASHBOARD ADMIN ---
 
-        function AdminDashboard({ users, logs, announcements, permits, config, updateData, handleResetSystem, manualSync }) {
+        function AdminDashboard({ users, logs, announcements, permits, config, updateData, handleResetSystem, manualSync, pullFromGoogleSheets }) {
             const [view, setView] = useState('overview'); 
             const [newUser, setNewUser] = useState({ name: '', email: '', department: '', position: '', location: '', role: 'employee' });
             const [newConfig, setNewConfig] = useState(config.googleScriptUrl);
@@ -437,16 +402,16 @@
             const handleAddUser = (e) => { e.preventDefault(); const newUserObj = { ...newUser, id: Date.now(), password: 'user' }; updateData('users', [...users, newUserObj]); setNewUser({ name: '', email: '', department: '', position: '', location: '', role: 'employee' }); alert('Karyawan berhasil ditambahkan!'); };
             const handleAddAnnouncement = (text) => { const newAnn = { id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }; updateData('announcements', [newAnn, ...announcements]); };
             
-            const handleSaveConfig = () => {
-                updateData('config', { googleScriptUrl: newConfig });
-                alert("URL Google Sheets berhasil disimpan!");
-            };
+            const handleSaveConfig = () => { updateData('config', { googleScriptUrl: newConfig }); alert("URL Google Sheets berhasil disimpan!"); };
 
             return (
                 <div className="space-y-6">
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg flex items-center justify-between text-sm shadow-sm">
-                    <div className="flex items-center gap-2"><Activity size={16} className="animate-pulse" /><span className="font-semibold">Live Sync:</span> {config.googleScriptUrl ? "Terhubung ke Google Sheets" : "Lokal Storage Aktif"}</div>
-                    <div className="flex items-center gap-4"><span className="text-xs text-green-600">{new Date().toLocaleTimeString()}</span><button onClick={manualSync} className="text-xs bg-white border border-green-300 px-2 py-1 rounded hover:bg-green-100 flex items-center gap-1 font-bold text-green-700"><RefreshCw size={12}/> Muat Ulang Data</button></div>
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg flex flex-wrap items-center justify-between text-sm shadow-sm gap-2">
+                    <div className="flex items-center gap-2"><Activity size={16} className="animate-pulse" /><span className="font-semibold">Live Sync:</span> {config.googleScriptUrl ? "Mode Cloud" : "Mode Lokal"}</div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={pullFromGoogleSheets} className="text-xs bg-blue-600 text-white border border-blue-700 px-3 py-1 rounded hover:bg-blue-700 flex items-center gap-1 font-bold"><DownloadCloud size={14}/> Tarik Data Cloud</button>
+                        <button onClick={manualSync} className="text-xs bg-white border border-green-300 px-2 py-1 rounded hover:bg-green-100 flex items-center gap-1 font-bold text-green-700"><RefreshCw size={12}/> Muat Ulang Lokal</button>
+                    </div>
                 </div>
 
                 <div className="flex overflow-x-auto gap-2 pb-2">
@@ -462,7 +427,7 @@
                 {view === 'database' && ( <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> 
                     <Card className="border-l-4 border-yellow-500 md:col-span-3"> 
                         <div className="flex items-center gap-2 mb-2 text-yellow-700"><Cloud size={20}/> <h3 className="font-bold text-lg">Integrasi Google Sheets</h3></div>
-                        <p className="text-sm text-gray-600 mb-4">Masukkan URL Web App dari Google Apps Script untuk menyimpan data absensi otomatis ke Spreadsheet Anda.</p>
+                        <p className="text-sm text-gray-600 mb-4">Masukkan URL Web App dari Google Apps Script untuk sinkronisasi 2 arah (Simpan & Tarik).</p>
                         <div className="flex gap-2">
                             <input className="w-full p-2 border rounded text-sm text-gray-900 bg-white" placeholder="https://script.google.com/macros/s/..." value={newConfig} onChange={(e) => setNewConfig(e.target.value)} />
                             <Button onClick={handleSaveConfig}>Simpan URL</Button>
@@ -497,19 +462,18 @@
                 if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); 
                 const newLog = { id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' };
                 
-                // BACA LANGSUNG DARI STORAGE UNTUK MEMASTIKAN DATA TERBARU (Mencegah Overwrite)
+                // SAFETY: BACA LANGSUNG DARI STORAGE
                 const existingLogs = JSON.parse(localStorage.getItem('app_logs') || '[]');
                 const updatedLogs = [newLog, ...existingLogs];
                 
                 updateData('logs', updatedLogs); 
                 pushToGoogleSheets({ name: user.name, type: type, status: 'Hadir', location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, info: 'Selfie OK' });
-                setPhoto(null); alert(`Absen ${type} Berhasil!`); 
+                setPhoto(null); alert(`Absen ${type} Berhasil! Data tersimpan.`); 
             };
 
             const handleSubmitPermit = (e) => { e.preventDefault(); 
                 const newPermit = { id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() };
                 
-                // BACA LANGSUNG DARI STORAGE
                 const existingPermits = JSON.parse(localStorage.getItem('app_permits') || '[]');
                 const updatedPermits = [newPermit, ...existingPermits];
 
