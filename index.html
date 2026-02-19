@@ -58,7 +58,7 @@
 
         const INITIAL_LOGS = [];
         const INITIAL_PERMITS = [];
-        const INITIAL_CONFIG = { googleScriptUrl: '' }; // Config untuk URL Google Script
+        const INITIAL_CONFIG = { googleScriptUrl: '' }; 
 
         const LOCATIONS = ['KOBAR', 'LAMANDAU', 'SUKAMARA', 'PALANGKARAYA'];
 
@@ -122,9 +122,12 @@
             const [permits, setPermits] = useState(() => JSON.parse(localStorage.getItem('app_permits')) || INITIAL_PERMITS);
             const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('app_config')) || INITIAL_CONFIG);
 
-            // --- FUNGSI UPDATE DATA & SYNC ---
+            // --- FUNGSI UPDATE DATA & SYNC (DIPERBAIKI) ---
             const updateData = (key, data) => {
                 const token = Date.now().toString();
+                // FIX: Update lastSyncToken lokal agar polling tidak menimpa data yang baru saja kita simpan
+                lastSyncToken.current = token; 
+
                 if (key === 'users') setUsers(data);
                 if (key === 'logs') setLogs(data);
                 if (key === 'announcements') setAnnouncements(data);
@@ -137,10 +140,8 @@
 
             // --- CLOUD SYNC FUNCTION (GOOGLE SHEETS) ---
             const pushToGoogleSheets = async (payload) => {
-                if (!config.googleScriptUrl) return; // Tidak ada URL, skip
-                
+                if (!config.googleScriptUrl) return; 
                 try {
-                    // Gunakan mode no-cors karena Google Script Web App berada di domain berbeda
                     await fetch(config.googleScriptUrl, {
                         method: 'POST',
                         mode: 'no-cors', 
@@ -155,7 +156,7 @@
 
             // --- REAL-TIME SYNC ENGINE ---
             useEffect(() => {
-                // Migrasi Admin
+                // Migrasi Admin (Pastikan Admin tidak hilang)
                 const currentUsers = JSON.parse(localStorage.getItem('app_users')) || [];
                 const admin = currentUsers.find(u => u.id === 1);
                 const adminCode = INITIAL_USERS[0];
@@ -168,8 +169,10 @@
                 // Polling Check
                 const checkUpdates = () => {
                     const currentToken = localStorage.getItem('app_sync_token');
+                    // Hanya update jika token di storage berbeda dengan token terakhir yang kita tahu
                     if (currentToken && currentToken !== lastSyncToken.current) {
                         lastSyncToken.current = currentToken;
+                        console.log("Syncing data from storage...");
                         setUsers(JSON.parse(localStorage.getItem('app_users') || '[]'));
                         setLogs(JSON.parse(localStorage.getItem('app_logs') || '[]'));
                         setAnnouncements(JSON.parse(localStorage.getItem('app_announcements') || '[]'));
@@ -198,7 +201,10 @@
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                const user = users.find(u => u.email.toLowerCase() === loginData.email.toLowerCase() && u.password === loginData.password);
+                // FIX: Gunakan trim() untuk menghapus spasi tidak sengaja
+                const emailInput = loginData.email.trim().toLowerCase();
+                const user = users.find(u => u.email.toLowerCase() === emailInput && u.password === loginData.password);
+                
                 if (user) {
                     setCurrentUser(user);
                     sessionStorage.setItem('currentUser', JSON.stringify(user));
@@ -210,26 +216,44 @@
 
             const handleRegister = (e) => {
                 e.preventDefault();
-                if (users.find(u => u.email.toLowerCase() === registerData.email.toLowerCase())) {
+                // FIX: Gunakan trim() saat mendaftar
+                const emailInput = registerData.email.trim();
+                
+                if (users.find(u => u.email.toLowerCase() === emailInput.toLowerCase())) {
                     setAuthError('Email sudah terdaftar!'); return;
                 }
-                const newUser = { id: Date.now(), name: registerData.name, email: registerData.email, password: registerData.password, department: registerData.department, position: registerData.position, location: registerData.location, role: 'employee', phone: '-' };
                 
-                updateData('users', [...users, newUser]);
+                const newUser = { 
+                    id: Date.now(), 
+                    name: registerData.name, 
+                    email: emailInput, // Simpan email bersih
+                    password: registerData.password, 
+                    department: registerData.department, 
+                    position: registerData.position, 
+                    location: registerData.location, 
+                    role: 'employee', 
+                    phone: '-' 
+                };
                 
-                // Kirim data registrasi ke Cloud (opsional)
+                // Simpan user baru
+                const newUsersList = [...users, newUser];
+                updateData('users', newUsersList);
+                
+                // Opsional: Kirim ke Google Sheets
                 pushToGoogleSheets({ name: newUser.name, type: 'Registrasi Baru', status: 'User', location: newUser.location, info: newUser.email });
 
                 setAuthError('');
-                setLoginData({ email: registerData.email, password: registerData.password });
-                alert('Pendaftaran Berhasil!');
+                // Auto-fill login dengan data baru
+                setLoginData({ email: emailInput, password: registerData.password });
+                alert('Pendaftaran Berhasil! Silakan klik Masuk.');
+                
                 setAuthView('login'); 
                 setRegisterData({ name: '', email: '', password: '', department: '', position: '', location: '' });
             };
 
             const handleForgotPassword = (e) => {
                 e.preventDefault();
-                const user = users.find(u => u.email.toLowerCase() === forgotEmail.toLowerCase());
+                const user = users.find(u => u.email.toLowerCase() === forgotEmail.trim().toLowerCase());
                 if (user) {
                     setAuthError('');
                     setAuthSuccess(`Akun ditemukan: ${user.name}. Hubungi Admin untuk reset.`);
@@ -419,14 +443,12 @@
                 if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); 
                 const newLog = { id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' };
                 updateData('logs', [newLog, ...logs]); 
-                // Push to Google Sheets
                 pushToGoogleSheets({ name: user.name, type: type, status: 'Hadir', location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, info: 'Selfie OK' });
                 setPhoto(null); alert(`Absen ${type} Berhasil!`); 
             };
             const handleSubmitPermit = (e) => { e.preventDefault(); 
                 const newPermit = { id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() };
                 updateData('permits', [newPermit, ...permits]); 
-                // Push to Google Sheets
                 pushToGoogleSheets({ name: user.name, type: 'Pengajuan Izin', status: 'Pending', location: '-', info: `${permitForm.type}: ${permitForm.reason}` });
                 setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' }); alert("Pengajuan berhasil dikirim!"); 
             };
