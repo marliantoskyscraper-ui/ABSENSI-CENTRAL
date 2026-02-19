@@ -41,37 +41,15 @@
             Camera, MapPin, User, LogOut, FileText, 
             Users, Bell, Calendar, CheckCircle, XCircle, 
             Menu, Download, Upload, Clock, Home, AlertCircle, Coffee, Trash2,
-            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Lock, Activity
+            Database, Save, Mail, HardDrive, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Lock, Activity, Cloud, Link2
         } from 'lucide-react';
 
         /**
-         * INITIAL DATA - PRODUCTION READY
+         * INITIAL DATA
          */
         const INITIAL_USERS = [
-            // AKUN ADMIN UTAMA (ID: 1)
-            { 
-                id: 1, 
-                name: 'Administrator', 
-                email: 'marliantoskyscraper@gmail.com', 
-                role: 'admin', 
-                password: 'abc12345', 
-                department: 'Management', 
-                position: 'Head Admin', 
-                location: 'PALANGKARAYA',
-                phone: '-' 
-            },
-            // AKUN KARYAWAN CONTOH (ID: 2)
-            { 
-                id: 2, 
-                name: 'Marlianto', 
-                email: 'marlianto@kantor.com', 
-                role: 'employee', 
-                password: 'marli123', 
-                department: 'PUPR', 
-                position: 'Staff', 
-                location: 'KOBAR',
-                phone: '-' 
-            }
+            { id: 1, name: 'Administrator', email: 'marliantoskyscraper@gmail.com', role: 'admin', password: 'abc12345', department: 'Management', position: 'Head Admin', location: 'PALANGKARAYA', phone: '-' },
+            { id: 2, name: 'Marlianto', email: 'marlianto@kantor.com', role: 'employee', password: 'marli123', department: 'PUPR', position: 'Staff', location: 'KOBAR', phone: '-' }
         ];
 
         const INITIAL_ANNOUNCEMENTS = [
@@ -80,6 +58,7 @@
 
         const INITIAL_LOGS = [];
         const INITIAL_PERMITS = [];
+        const INITIAL_CONFIG = { googleScriptUrl: '' }; // Config untuk URL Google Script
 
         const LOCATIONS = ['KOBAR', 'LAMANDAU', 'SUKAMARA', 'PALANGKARAYA'];
 
@@ -106,13 +85,8 @@
             };
 
             return (
-                <button 
-                onClick={onClick} 
-                disabled={disabled}
-                className={`${baseStyle} ${variants[variant]} ${className}`}
-                >
-                {Icon && <Icon size={18} />}
-                {children}
+                <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
+                    {Icon && <Icon size={18} />} {children}
                 </button>
             );
         };
@@ -125,108 +99,91 @@
 
         const Badge = ({ children, type = 'info' }) => {
             const styles = {
-                info: 'bg-blue-100 text-blue-800',
-                success: 'bg-green-100 text-green-800',
-                warning: 'bg-yellow-100 text-yellow-800',
-                danger: 'bg-red-100 text-red-800',
-                gray: 'bg-gray-100 text-gray-800'
+                info: 'bg-blue-100 text-blue-800', success: 'bg-green-100 text-green-800', warning: 'bg-yellow-100 text-yellow-800', danger: 'bg-red-100 text-red-800', gray: 'bg-gray-100 text-gray-800'
             };
-            return (
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[type] || styles.info}`}>
-                {children}
-                </span>
-            );
+            return <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[type] || styles.info}`}>{children}</span>;
         };
 
         // --- HALAMAN UTAMA ---
 
         function App() {
             const [currentUser, setCurrentUser] = useState(null);
+            const lastSyncToken = useRef(localStorage.getItem('app_sync_token') || '0');
             
-            // --- STATE MANAGEMENT DENGAN SMART SYNC ---
-            
-            // Inisialisasi State (Load dari Storage atau Default)
+            // --- STATE MANAGEMENT ---
             const [users, setUsers] = useState(() => {
                 try {
                     const saved = localStorage.getItem('app_users');
                     return saved ? JSON.parse(saved) : INITIAL_USERS;
                 } catch { return INITIAL_USERS; }
             });
-            
             const [logs, setLogs] = useState(() => JSON.parse(localStorage.getItem('app_logs')) || INITIAL_LOGS);
             const [announcements, setAnnouncements] = useState(() => JSON.parse(localStorage.getItem('app_announcements')) || INITIAL_ANNOUNCEMENTS);
             const [permits, setPermits] = useState(() => JSON.parse(localStorage.getItem('app_permits')) || INITIAL_PERMITS);
+            const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('app_config')) || INITIAL_CONFIG);
 
-            // --- REAL-TIME LISTENER & POLLING ---
+            // --- FUNGSI UPDATE DATA & SYNC ---
+            const updateData = (key, data) => {
+                const token = Date.now().toString();
+                if (key === 'users') setUsers(data);
+                if (key === 'logs') setLogs(data);
+                if (key === 'announcements') setAnnouncements(data);
+                if (key === 'permits') setPermits(data);
+                if (key === 'config') setConfig(data);
+                
+                localStorage.setItem(`app_${key}`, JSON.stringify(data));
+                localStorage.setItem('app_sync_token', token);
+            };
+
+            // --- CLOUD SYNC FUNCTION (GOOGLE SHEETS) ---
+            const pushToGoogleSheets = async (payload) => {
+                if (!config.googleScriptUrl) return; // Tidak ada URL, skip
+                
+                try {
+                    // Gunakan mode no-cors karena Google Script Web App berada di domain berbeda
+                    await fetch(config.googleScriptUrl, {
+                        method: 'POST',
+                        mode: 'no-cors', 
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    console.log("Data sent to Google Sheets");
+                } catch (error) {
+                    console.error("Gagal kirim ke Google Sheets:", error);
+                }
+            };
+
+            // --- REAL-TIME SYNC ENGINE ---
             useEffect(() => {
-                // 1. Migrasi Data Admin (Jika password kode berubah, update di storage tanpa hapus user lain)
+                // Migrasi Admin
                 const currentUsers = JSON.parse(localStorage.getItem('app_users')) || [];
                 const admin = currentUsers.find(u => u.id === 1);
-                
-                // Cek apakah data admin di storage usang/beda dengan kode
                 const adminCode = INITIAL_USERS[0];
                 if (!admin || admin.email !== adminCode.email || admin.password !== adminCode.password) {
-                    const updatedUsers = [
-                        adminCode, // Pakai data admin terbaru dari kode
-                        ...currentUsers.filter(u => u.id !== 1) // Pertahankan user lain
-                    ];
-                    // Jika Marlianto (ID 2) hilang, tambahkan kembali
-                    if (!updatedUsers.find(u => u.id === 2)) {
-                        updatedUsers.push(INITIAL_USERS[1]);
-                    }
-                    setUsers(updatedUsers);
+                    const updatedUsers = [adminCode, ...currentUsers.filter(u => u.id !== 1)];
+                    if (!updatedUsers.find(u => u.id === 2)) updatedUsers.push(INITIAL_USERS[1]);
+                    updateData('users', updatedUsers);
                 }
 
-                // 2. Fungsi Sinkronisasi (Diperbaiki)
-                const syncData = () => {
-                    try {
-                        const savedUsers = localStorage.getItem('app_users');
-                        const savedLogs = localStorage.getItem('app_logs');
-                        const savedPermits = localStorage.getItem('app_permits');
-                        const savedAnnouncements = localStorage.getItem('app_announcements');
-
-                        // Update state HANYA jika data di storage berbeda dan valid
-                        if (savedUsers) {
-                            const parsed = JSON.parse(savedUsers);
-                            setUsers(prev => JSON.stringify(prev) !== savedUsers ? parsed : prev);
-                        }
-                        if (savedLogs) {
-                            const parsed = JSON.parse(savedLogs);
-                            setLogs(prev => JSON.stringify(prev) !== savedLogs ? parsed : prev);
-                        }
-                        if (savedPermits) {
-                            const parsed = JSON.parse(savedPermits);
-                            setPermits(prev => JSON.stringify(prev) !== savedPermits ? parsed : prev);
-                        }
-                        if (savedAnnouncements) {
-                            const parsed = JSON.parse(savedAnnouncements);
-                            setAnnouncements(prev => JSON.stringify(prev) !== savedAnnouncements ? parsed : prev);
-                        }
-                    } catch (e) {
-                        console.error("Sync error", e);
+                // Polling Check
+                const checkUpdates = () => {
+                    const currentToken = localStorage.getItem('app_sync_token');
+                    if (currentToken && currentToken !== lastSyncToken.current) {
+                        lastSyncToken.current = currentToken;
+                        setUsers(JSON.parse(localStorage.getItem('app_users') || '[]'));
+                        setLogs(JSON.parse(localStorage.getItem('app_logs') || '[]'));
+                        setAnnouncements(JSON.parse(localStorage.getItem('app_announcements') || '[]'));
+                        setPermits(JSON.parse(localStorage.getItem('app_permits') || '[]'));
+                        setConfig(JSON.parse(localStorage.getItem('app_config') || JSON.stringify(INITIAL_CONFIG)));
                     }
                 };
 
-                // Listen perubahan dari tab lain
-                window.addEventListener('storage', syncData);
-                
-                // Polling setiap 1 detik (Brute force sync agar data "Daftar" langsung masuk ke "Admin")
-                const interval = setInterval(syncData, 1000);
-
-                return () => {
-                    window.removeEventListener('storage', syncData);
-                    clearInterval(interval);
-                };
+                window.addEventListener('storage', (e) => { if (e.key === 'app_sync_token') checkUpdates(); });
+                const interval = setInterval(checkUpdates, 1000);
+                return () => clearInterval(interval);
             }, []);
-
-            // Simpan perubahan ke LocalStorage setiap kali state berubah
-            useEffect(() => { localStorage.setItem('app_users', JSON.stringify(users)); }, [users]);
-            useEffect(() => { localStorage.setItem('app_logs', JSON.stringify(logs)); }, [logs]);
-            useEffect(() => { localStorage.setItem('app_announcements', JSON.stringify(announcements)); }, [announcements]);
-            useEffect(() => { localStorage.setItem('app_permits', JSON.stringify(permits)); }, [permits]);
             
-            // --- LOGIN, REGISTER & FORGOT PASSWORD LOGIC ---
-
+            // --- AUTH LOGIC ---
             const [authView, setAuthView] = useState('login'); 
             const [loginData, setLoginData] = useState({ email: '', password: '' });
             const [registerData, setRegisterData] = useState({ name: '', email: '', password: '', department: '', position: '', location: '' });
@@ -236,9 +193,7 @@
 
             useEffect(() => {
                 const savedUser = sessionStorage.getItem('currentUser');
-                if (savedUser) {
-                    setCurrentUser(JSON.parse(savedUser));
-                }
+                if (savedUser) setCurrentUser(JSON.parse(savedUser));
             }, []);
 
             const handleLogin = (e) => {
@@ -256,29 +211,18 @@
             const handleRegister = (e) => {
                 e.preventDefault();
                 if (users.find(u => u.email.toLowerCase() === registerData.email.toLowerCase())) {
-                    setAuthError('Email sudah terdaftar! Silakan login.');
-                    return;
+                    setAuthError('Email sudah terdaftar!'); return;
                 }
+                const newUser = { id: Date.now(), name: registerData.name, email: registerData.email, password: registerData.password, department: registerData.department, position: registerData.position, location: registerData.location, role: 'employee', phone: '-' };
+                
+                updateData('users', [...users, newUser]);
+                
+                // Kirim data registrasi ke Cloud (opsional)
+                pushToGoogleSheets({ name: newUser.name, type: 'Registrasi Baru', status: 'User', location: newUser.location, info: newUser.email });
 
-                const newUser = {
-                    id: Date.now(),
-                    name: registerData.name,
-                    email: registerData.email,
-                    password: registerData.password,
-                    department: registerData.department,
-                    position: registerData.position,
-                    location: registerData.location,
-                    role: 'employee', 
-                    phone: '-'
-                };
-
-                // PENTING: Gunakan functional update untuk menjamin data baru ditambahkan ke state terkini
-                setUsers(prevUsers => [...prevUsers, newUser]); 
                 setAuthError('');
-                
                 setLoginData({ email: registerData.email, password: registerData.password });
-                
-                alert('Pendaftaran Berhasil! Data Anda telah disinkronkan ke server Admin.');
+                alert('Pendaftaran Berhasil!');
                 setAuthView('login'); 
                 setRegisterData({ name: '', email: '', password: '', department: '', position: '', location: '' });
             };
@@ -288,10 +232,10 @@
                 const user = users.find(u => u.email.toLowerCase() === forgotEmail.toLowerCase());
                 if (user) {
                     setAuthError('');
-                    setAuthSuccess(`Akun ditemukan atas nama ${user.name}. Silakan hubungi Admin (marliantoskyscraper@gmail.com) untuk reset password.`);
+                    setAuthSuccess(`Akun ditemukan: ${user.name}. Hubungi Admin untuk reset.`);
                 } else {
                     setAuthSuccess('');
-                    setAuthError('Email tidak ditemukan dalam sistem.');
+                    setAuthError('Email tidak ditemukan.');
                 }
             };
 
@@ -305,22 +249,16 @@
             };
 
             const handleResetSystem = () => {
-                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data dan mengembalikan ke kondisi awal instalasi. Lanjutkan?")) {
-                    localStorage.clear();
-                    sessionStorage.clear();
-                    window.location.reload();
+                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data. Lanjutkan?")) {
+                    localStorage.clear(); sessionStorage.clear(); window.location.reload();
                 }
             }
 
-            // Fungsi manual sync untuk Admin
             const manualSync = () => {
-                const savedLogs = localStorage.getItem('app_logs');
-                if (savedLogs) {
-                    setLogs(JSON.parse(savedLogs));
-                    alert("Data berhasil disinkronkan dengan database pusat!");
-                } else {
-                    alert("Database masih kosong.");
-                }
+                setLogs(JSON.parse(localStorage.getItem('app_logs') || '[]'));
+                setUsers(JSON.parse(localStorage.getItem('app_users') || '[]'));
+                setPermits(JSON.parse(localStorage.getItem('app_permits') || '[]'));
+                alert("Data disinkronkan!");
             };
 
             if (!currentUser) {
@@ -334,50 +272,23 @@
                             <h1 className="text-2xl font-bold text-white">E-Absensi Pro</h1>
                             <p className="text-blue-100 text-sm">Sistem Absensi Terintegrasi</p>
                         </div>
-                    
                         <div className="p-8">
-                            {authError && (
-                                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-4">
-                                    <AlertCircle size={16} /> <span>{authError}</span>
-                                </div>
-                            )}
-                            {authSuccess && (
-                                <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-4">
-                                    <CheckCircle size={16} /> <span>{authSuccess}</span>
-                                </div>
-                            )}
+                            {authError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-4"><AlertCircle size={16} /> <span>{authError}</span></div>}
+                            {authSuccess && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-4"><CheckCircle size={16} /> <span>{authSuccess}</span></div>}
 
                             {authView === 'login' && (
                                 <form onSubmit={handleLogin} className="space-y-4">
                                     <h2 className="text-lg font-bold text-gray-800 text-center">Login Masuk</h2>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                        <input type="email" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={loginData.email} onChange={(e) => setLoginData({...loginData, email: e.target.value})} placeholder="email@kantor.com" required />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                        <input type="password" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={loginData.password} onChange={(e) => setLoginData({...loginData, password: e.target.value})} placeholder="*****" required />
-                                    </div>
-                                    <div className="flex justify-end">
-                                        <button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); setAuthSuccess(''); }} className="text-xs text-blue-600 hover:underline">Lupa Password?</button>
-                                    </div>
+                                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" className="w-full px-4 py-2 border border-gray-300 rounded-lg" value={loginData.email} onChange={(e) => setLoginData({...loginData, email: e.target.value})} required /></div>
+                                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Password</label><input type="password" className="w-full px-4 py-2 border border-gray-300 rounded-lg" value={loginData.password} onChange={(e) => setLoginData({...loginData, password: e.target.value})} required /></div>
+                                    <div className="flex justify-end"><button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); }} className="text-xs text-blue-600 hover:underline">Lupa Password?</button></div>
                                     <Button className="w-full mt-2">Masuk Sistem</Button>
-                                    
-                                    <div className="text-center mt-4">
-                                        <p className="text-sm text-gray-600">Belum punya akun?</p>
-                                        <button type="button" onClick={() => { setAuthView('register'); setAuthError(''); setAuthSuccess(''); }} className="text-blue-600 font-bold hover:underline text-sm mt-1 flex items-center justify-center gap-1 mx-auto">
-                                            <UserPlus size={14}/> Daftar Karyawan Baru
-                                        </button>
-                                    </div>
+                                    <div className="text-center mt-4"><p className="text-sm text-gray-600">Belum punya akun?</p><button type="button" onClick={() => { setAuthView('register'); setAuthError(''); }} className="text-blue-600 font-bold hover:underline text-sm mt-1 flex items-center justify-center gap-1 mx-auto"><UserPlus size={14}/> Daftar Karyawan Baru</button></div>
                                 </form>
                             )}
-
                             {authView === 'register' && (
                                 <form onSubmit={handleRegister} className="space-y-3">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <button type="button" onClick={() => setAuthView('login')} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button>
-                                        <h2 className="text-lg font-bold text-gray-800">Pendaftaran Baru</h2>
-                                    </div>
+                                    <div className="flex items-center gap-2 mb-2"><button type="button" onClick={() => setAuthView('login')} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button><h2 className="text-lg font-bold text-gray-800">Pendaftaran Baru</h2></div>
                                     <input className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Nama Lengkap" value={registerData.name} onChange={(e) => setRegisterData({...registerData, name: e.target.value})} required />
                                     <input type="email" className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Email Aktif" value={registerData.email} onChange={(e) => setRegisterData({...registerData, email: e.target.value})} required />
                                     <input type="password" className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Password" value={registerData.password} onChange={(e) => setRegisterData({...registerData, password: e.target.value})} required />
@@ -392,15 +303,11 @@
                                     <Button className="w-full mt-4" variant="success">Daftar & Sinkronisasi</Button>
                                 </form>
                             )}
-
                             {authView === 'forgot' && (
                                 <form onSubmit={handleForgotPassword} className="space-y-4">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <button type="button" onClick={() => { setAuthView('login'); setAuthError(''); setAuthSuccess(''); }} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button>
-                                        <h2 className="text-lg font-bold text-gray-800">Lupa Password</h2>
-                                    </div>
-                                    <p className="text-sm text-gray-600">Masukkan email Anda untuk verifikasi akun.</p>
-                                    <input type="email" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="email@kantor.com" required />
+                                    <div className="flex items-center gap-2 mb-2"><button type="button" onClick={() => { setAuthView('login'); setAuthError(''); }} className="text-gray-500 hover:text-gray-700"><ArrowLeft size={20}/></button><h2 className="text-lg font-bold text-gray-800">Lupa Password</h2></div>
+                                    <p className="text-sm text-gray-600">Masukkan email verifikasi.</p>
+                                    <input type="email" className="w-full px-4 py-2 border border-gray-300 rounded-lg" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
                                     <Button className="w-full" variant="warning">Cek Akun</Button>
                                 </form>
                             )}
@@ -414,46 +321,15 @@
                 <div className="min-h-screen bg-gray-50 flex flex-col">
                 <header className="bg-white shadow-sm sticky top-0 z-50">
                     <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">A</div>
-                        <h1 className="font-bold text-gray-800 hidden sm:block">E-Absensi</h1>
-                    </div>
-                    
-                    <div className="flex items-center gap-4">
-                        <div className="text-right hidden sm:block">
-                        <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
-                        <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
-                        </div>
-                        <button onClick={handleLogout} className="p-2 hover:bg-gray-100 rounded-full text-red-500" title="Logout">
-                            <LogOut size={20} />
-                        </button>
-                    </div>
+                    <div className="flex items-center gap-2"><div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">A</div><h1 className="font-bold text-gray-800 hidden sm:block">E-Absensi</h1></div>
+                    <div className="flex items-center gap-4"><div className="text-right hidden sm:block"><p className="text-sm font-medium text-gray-900">{currentUser.name}</p><p className="text-xs text-gray-500 capitalize">{currentUser.role}</p></div><button onClick={handleLogout} className="p-2 hover:bg-gray-100 rounded-full text-red-500"><LogOut size={20} /></button></div>
                     </div>
                 </header>
-
                 <main className="flex-1 max-w-7xl w-full mx-auto p-4">
                     {currentUser.role === 'admin' ? (
-                    <AdminDashboard 
-                        users={users} 
-                        setUsers={setUsers} 
-                        logs={logs} 
-                        setLogs={setLogs}
-                        announcements={announcements}
-                        setAnnouncements={setAnnouncements}
-                        permits={permits}
-                        setPermits={setPermits}
-                        handleResetSystem={handleResetSystem}
-                        manualSync={manualSync}
-                    />
+                    <AdminDashboard users={users} logs={logs} announcements={announcements} permits={permits} config={config} updateData={updateData} handleResetSystem={handleResetSystem} manualSync={manualSync} />
                     ) : (
-                    <EmployeeDashboard 
-                        user={currentUser} 
-                        logs={logs} 
-                        setLogs={setLogs}
-                        announcements={announcements}
-                        permits={permits}
-                        setPermits={setPermits}
-                    />
+                    <EmployeeDashboard user={currentUser} logs={logs} announcements={announcements} permits={permits} updateData={updateData} pushToGoogleSheets={pushToGoogleSheets} />
                     )}
                 </main>
                 </div>
@@ -462,377 +338,97 @@
 
         // --- DASHBOARD ADMIN ---
 
-        function AdminDashboard({ users, setUsers, logs, setLogs, announcements, setAnnouncements, permits, setPermits, handleResetSystem, manualSync }) {
+        function AdminDashboard({ users, logs, announcements, permits, config, updateData, handleResetSystem, manualSync }) {
             const [view, setView] = useState('overview'); 
             const [newUser, setNewUser] = useState({ name: '', email: '', department: '', position: '', location: '', role: 'employee' });
-            const [startDate, setStartDate] = useState('');
-            const [endDate, setEndDate] = useState('');
-            const [showPassword, setShowPassword] = useState({}); 
-
-            const todayLogs = logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
-            const uniqueAttendees = new Set(todayLogs.map(l => l.userId)).size;
-            const pendingPermits = permits.filter(p => p.status === 'Pending');
+            const [newConfig, setNewConfig] = useState(config.googleScriptUrl);
+            const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState(''); const [showPassword, setShowPassword] = useState({}); 
 
             const filteredLogs = logs.filter(log => {
                 if (!startDate && !endDate) return true;
-                const logDate = new Date(log.timestamp);
-                logDate.setHours(0,0,0,0);
-                const start = startDate ? new Date(startDate) : new Date('2000-01-01');
-                start.setHours(0,0,0,0);
-                const end = endDate ? new Date(endDate) : new Date();
-                end.setHours(23,59,59,999);
+                const logDate = new Date(log.timestamp); logDate.setHours(0,0,0,0);
+                const start = startDate ? new Date(startDate) : new Date('2000-01-01'); start.setHours(0,0,0,0);
+                const end = endDate ? new Date(endDate) : new Date(); end.setHours(23,59,59,999);
                 return logDate >= start && logDate <= end;
             });
 
             const togglePassword = (id) => setShowPassword(prev => ({ ...prev, [id]: !prev[id] }));
-            const handleResetUserPassword = (userId) => {
-                const newPass = prompt("Masukkan password baru untuk user ini:");
-                if (newPass) {
-                    setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, password: newPass } : u));
-                    alert("Password berhasil diubah & disinkronkan!");
-                }
+            const handlePermitAction = (id, status) => { const updatedPermits = permits.map(p => p.id === id ? { ...p, status: status } : p); updateData('permits', updatedPermits); alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`); };
+            const handleExportCSV = () => { let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Divisi,Jabatan,Lokasi_Kerja,Tipe,Waktu,Lokasi_Absen\n"; filteredLogs.forEach(row => { const user = users.find(u => u.id === row.userId) || {}; csvContent += `${row.id},"${row.name}","${user.department || '-'}","${user.position || '-'}","${user.location || '-'}",${row.type},${row.timestamp},"${row.location}"\n`; }); const encodedUri = encodeURI(csvContent); const link = document.createElement("a"); link.setAttribute("href", encodedUri); link.setAttribute("download", `Laporan_Absensi.csv`); document.body.appendChild(link); link.click(); };
+            const handleBackupJSON = () => { const backupData = { users, logs, announcements, permits, config, exportDate: new Date().toISOString() }; const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData)); const link = document.createElement("a"); link.setAttribute("href", dataStr); link.setAttribute("download", `BACKUP_FULL.json`); document.body.appendChild(link); link.click(); };
+            const handleRestoreJSON = (event) => { const fileReader = new FileReader(); fileReader.readAsText(event.target.files[0], "UTF-8"); fileReader.onload = e => { try { const parsedData = JSON.parse(e.target.result); if(parsedData.users) { if(confirm("Restore data?")) { updateData('users', parsedData.users); updateData('logs', parsedData.logs || []); updateData('announcements', parsedData.announcements || []); updateData('permits', parsedData.permits || []); updateData('config', parsedData.config || {googleScriptUrl:''}); alert("Restore berhasil!"); window.location.reload(); } } } catch (err) { alert("Gagal membaca file."); } }; };
+            const handleEmailBackup = () => { handleExportCSV(); const emailTo = "karsasentana@gmail.com"; const subject = `Laporan Database Absensi - ${new Date().toLocaleDateString()}`; const body = `Halo Admin,\n\nTerlampir laporan absensi terbaru.\n\nTerima kasih.`; window.location.href = `mailto:${emailTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; };
+            const handleAddUser = (e) => { e.preventDefault(); const newUserObj = { ...newUser, id: Date.now(), password: 'user' }; updateData('users', [...users, newUserObj]); setNewUser({ name: '', email: '', department: '', position: '', location: '', role: 'employee' }); alert('Karyawan berhasil ditambahkan!'); };
+            const handleAddAnnouncement = (text) => { const newAnn = { id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }; updateData('announcements', [newAnn, ...announcements]); };
+            
+            const handleSaveConfig = () => {
+                updateData('config', { googleScriptUrl: newConfig });
+                alert("URL Google Sheets berhasil disimpan!");
             };
-
-            const handlePermitAction = (id, status) => { setPermits(prev => prev.map(p => p.id === id ? { ...p, status: status } : p)); alert(`Pengajuan berhasil di-${status === 'Approved' ? 'setujui' : 'tolak'}.`); };
-            const handleExportCSV = () => {
-                let csvContent = "data:text/csv;charset=utf-8,ID,Nama,Divisi,Jabatan,Lokasi_Kerja,Tipe,Waktu,Lokasi_Absen\n";
-                filteredLogs.forEach(row => { const user = users.find(u => u.id === row.userId) || {}; csvContent += `${row.id},"${row.name}","${user.department || '-'}","${user.position || '-'}","${user.location || '-'}",${row.type},${row.timestamp},"${row.location}"\n`; });
-                const encodedUri = encodeURI(csvContent); const link = document.createElement("a"); link.setAttribute("href", encodedUri); link.setAttribute("download", `Laporan_Absensi.csv`); document.body.appendChild(link); link.click();
-            };
-            const handleBackupJSON = () => { const backupData = { users, logs, announcements, permits, exportDate: new Date().toISOString() }; const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData)); const link = document.createElement("a"); link.setAttribute("href", dataStr); link.setAttribute("download", `BACKUP_FULL.json`); document.body.appendChild(link); link.click(); };
-            const handleRestoreJSON = (event) => { const fileReader = new FileReader(); fileReader.readAsText(event.target.files[0], "UTF-8"); fileReader.onload = e => { try { const parsedData = JSON.parse(e.target.result); if(parsedData.users) { if(confirm("Restore data? Data saat ini akan ditimpa.")) { setUsers(parsedData.users); setLogs(parsedData.logs || []); setAnnouncements(parsedData.announcements || []); setPermits(parsedData.permits || []); alert("Restore berhasil!"); window.location.reload(); } } } catch (err) { alert("Gagal membaca file."); } }; };
-            const handleEmailBackup = () => { handleExportCSV(); const emailTo = "karsasentana@gmail.com"; const subject = `Laporan Database Absensi - ${new Date().toLocaleDateString()}`; const body = `Halo Admin,\n\nBerikut adalah laporan database absensi terbaru dari sistem.\n\n(Mohon lampirkan file .csv yang baru saja terunduh secara otomatis)\n\nTerima kasih.`; window.location.href = `mailto:${emailTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; };
-            const handleAddUser = (e) => { e.preventDefault(); setUsers(prev => [...prev, { ...newUser, id: Date.now(), password: 'user' }]); setNewUser({ name: '', email: '', department: '', position: '', location: '', role: 'employee' }); alert('Karyawan berhasil ditambahkan!'); };
-            const handleAddAnnouncement = (text) => { setAnnouncements(prev => [{ id: Date.now(), title: "Info Admin", content: text, date: new Date().toISOString().split('T')[0] }, ...prev]); };
 
             return (
                 <div className="space-y-6">
-                {/* --- Status Bar Live Sync --- */}
                 <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg flex items-center justify-between text-sm shadow-sm">
-                    <div className="flex items-center gap-2">
-                        <Activity size={16} className="animate-pulse" />
-                        <span className="font-semibold">Live Sync Aktif:</span> Data pendaftar & absensi terhubung real-time.
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <span className="text-xs text-green-600">{new Date().toLocaleTimeString()}</span>
-                        <button onClick={manualSync} className="text-xs bg-white border border-green-300 px-2 py-1 rounded hover:bg-green-100 flex items-center gap-1">
-                            <RefreshCw size={12}/> Paksa Refresh
-                        </button>
-                    </div>
+                    <div className="flex items-center gap-2"><Activity size={16} className="animate-pulse" /><span className="font-semibold">Live Sync:</span> {config.googleScriptUrl ? "Terhubung ke Google Sheets" : "Lokal Storage Aktif"}</div>
+                    <div className="flex items-center gap-4"><span className="text-xs text-green-600">{new Date().toLocaleTimeString()}</span><button onClick={manualSync} className="text-xs bg-white border border-green-300 px-2 py-1 rounded hover:bg-green-100 flex items-center gap-1"><RefreshCw size={12}/> Refresh</button></div>
                 </div>
 
                 <div className="flex overflow-x-auto gap-2 pb-2">
-                    {[
-                    { id: 'overview', label: 'Dashboard', icon: Home },
-                    { id: 'employees', label: 'Karyawan', icon: Users },
-                    { id: 'approvals', label: `Persetujuan (${pendingPermits.length})`, icon: ClipboardCheck },
-                    { id: 'reports', label: 'Laporan', icon: FileText },
-                    { id: 'announcements', label: 'Info', icon: Bell },
-                    { id: 'database', label: 'Database', icon: Database }, 
-                    ].map((tab) => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setView(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition ${
-                        view === tab.id 
-                            ? 'bg-blue-600 text-white shadow-md' 
-                            : 'bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                    >
-                        <tab.icon size={18} />
-                        {tab.label}
-                        {tab.id === 'approvals' && pendingPermits.length > 0 && (
-                            <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{pendingPermits.length}</span>
-                        )}
-                    </button>
-                    ))}
+                    {[{ id: 'overview', label: 'Dashboard', icon: Home }, { id: 'employees', label: 'Karyawan', icon: Users }, { id: 'approvals', label: `Persetujuan`, icon: ClipboardCheck }, { id: 'reports', label: 'Laporan', icon: FileText }, { id: 'announcements', label: 'Info', icon: Bell }, { id: 'database', label: 'Database', icon: Database }].map((tab) => (
+                    <button key={tab.id} onClick={() => setView(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition ${view === tab.id ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'}`}> <tab.icon size={18} /> {tab.label} </button> ))}
                 </div>
 
-                {view === 'overview' && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none">
-                        <h3 className="text-blue-100 font-medium">Total Karyawan</h3>
-                        <p className="text-3xl font-bold mt-2">{users.length - 1}</p>
+                {view === 'overview' && ( <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> <Card className="bg-blue-600 text-white border-none"><h3>Total Karyawan</h3><p className="text-3xl font-bold mt-2">{users.length - 1}</p></Card> <Card className="bg-green-600 text-white border-none"><h3>Hadir Hari Ini</h3><p className="text-3xl font-bold mt-2">{new Set(logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString()).map(l => l.userId)).size}</p></Card> <Card className="bg-orange-600 text-white border-none"><h3>Menunggu Persetujuan</h3><p className="text-3xl font-bold mt-2">{permits.filter(p => p.status === 'Pending').length}</p></Card> </div> )}
+                {view === 'employees' && ( <div className="grid grid-cols-1 lg:grid-cols-3 gap-6"> <div className="lg:col-span-2"> <div className="bg-white rounded-xl shadow-sm border overflow-hidden"> <div className="p-4 border-b"><h3 className="font-bold text-gray-700">Daftar Karyawan</h3></div> <table className="w-full text-left text-sm"> <thead className="bg-gray-50 border-b"> <tr> <th className="p-3">Nama/Email</th> <th className="p-3">Divisi</th> <th className="p-3">Password</th> </tr> </thead> <tbody> {users.filter(u => u.role !== 'admin').map(u => ( <tr key={u.id} className="border-b"> <td className="p-3"><div className="font-medium">{u.name}</div><div className="text-xs text-gray-500">{u.email}</div></td> <td className="p-3"><div className="text-xs font-semibold">{u.department}</div><div className="text-xs text-gray-500">{u.location}</div></td> <td className="p-3"><div className="flex items-center gap-2"><span className="font-mono bg-gray-100 px-2 py-1 rounded text-xs">{showPassword[u.id] ? u.password : '••••••'}</span><button onClick={() => togglePassword(u.id)} className="text-gray-400">{showPassword[u.id] ? <EyeOff size={14}/> : <Eye size={14}/>}</button></div></td> </tr> ))} </tbody> </table> </div> </div> <div> <Card> <h3 className="font-bold text-gray-800 mb-4">Tambah Anggota</h3> <form onSubmit={handleAddUser} className="space-y-3"> <input className="w-full p-2 border rounded text-sm" placeholder="Nama" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required /> <input className="w-full p-2 border rounded text-sm" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required /> <input className="w-full p-2 border rounded text-sm" placeholder="Divisi" value={newUser.department} onChange={e => setNewUser({...newUser, department: e.target.value})} required /> <input className="w-full p-2 border rounded text-sm" placeholder="Jabatan" value={newUser.position} onChange={e => setNewUser({...newUser, position: e.target.value})} required /> <select className="w-full p-2 border rounded text-sm bg-white" value={newUser.location} onChange={(e) => setNewUser({...newUser, location: e.target.value})} required > <option value="">Pilih Lokasi</option> {LOCATIONS.map(loc => (<option key={loc} value={loc}>{loc}</option>))} </select> <Button className="w-full" variant="success">Simpan</Button> </form> </Card> </div> </div> )}
+                {view === 'approvals' && ( <div className="space-y-4"> <div className="bg-white rounded-xl shadow-sm border overflow-hidden overflow-x-auto"> <table className="w-full text-left text-sm"> <thead className="bg-gray-50 border-b"> <tr> <th className="p-4">Nama</th> <th className="p-4">Jenis</th> <th className="p-4">Tanggal</th> <th className="p-4">Alasan</th> <th className="p-4">Aksi</th> </tr> </thead> <tbody> {permits.length === 0 ? <tr><td colSpan="5" className="p-4 text-center">Kosong</td></tr> : permits.sort((a,b)=>new Date(b.dateApplied)-new Date(a.dateApplied)).map(p => ( <tr key={p.id} className="border-b"> <td className="p-4">{p.name}</td> <td className="p-4"><Badge type="info">{p.type}</Badge></td> <td className="p-4">{formatSimpleDate(p.startDate)} - {formatSimpleDate(p.endDate)}</td> <td className="p-4 text-gray-600">{p.reason}</td> <td className="p-4"> {p.status === 'Pending' ? <div className="flex gap-2"><button onClick={()=>handlePermitAction(p.id,'Approved')} className="text-green-600"><CheckCircle/></button><button onClick={()=>handlePermitAction(p.id,'Rejected')} className="text-red-600"><XCircle/></button></div> : <Badge type={p.status==='Approved'?'success':'danger'}>{p.status}</Badge>} </td> </tr> ))} </tbody> </table> </div> </div> )}
+                {view === 'reports' && ( <div className="space-y-4"> <div className="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center"> <h2>Laporan</h2> <Button icon={Download} onClick={handleExportCSV}>Export</Button> </div> <div className="bg-white rounded-xl shadow-sm border overflow-x-auto"> <table className="w-full text-left text-sm"> <thead className="bg-gray-50 border-b"> <tr> <th className="p-4">Tanggal</th> <th className="p-4">Nama</th> <th className="p-4">Status</th> <th className="p-4">Waktu</th> </tr> </thead> <tbody> {filteredLogs.map(log => ( <tr key={log.id} className="border-b"> <td className="p-4">{new Date(log.timestamp).toLocaleDateString()}</td> <td className="p-4">{log.name}</td> <td className="p-4"><Badge type="success">{log.type}</Badge></td> <td className="p-4">{new Date(log.timestamp).toLocaleTimeString()}</td> </tr> ))} </tbody> </table> </div> </div> )}
+                {view === 'announcements' && ( <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> <Card> <h3>Buat Pengumuman</h3> <form onSubmit={(e)=>{e.preventDefault(); handleAddAnnouncement(e.target.content.value); e.target.reset();}}><textarea name="content" className="w-full p-2 border rounded mt-2" placeholder="Isi..."></textarea><Button className="w-full mt-2">Kirim</Button></form> </Card> <div className="space-y-3">{announcements.map(ann => (<div key={ann.id} className="bg-white p-4 rounded shadow-sm border"><h4 className="font-bold">{ann.title}</h4><p className="text-sm text-gray-600">{ann.content}</p></div>))}</div> </div> )}
+                {view === 'database' && ( <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> 
+                    <Card className="border-l-4 border-yellow-500 md:col-span-3"> 
+                        <div className="flex items-center gap-2 mb-2 text-yellow-700"><Cloud size={20}/> <h3 className="font-bold text-lg">Integrasi Google Sheets</h3></div>
+                        <p className="text-sm text-gray-600 mb-4">Masukkan URL Web App dari Google Apps Script untuk menyimpan data absensi otomatis ke Spreadsheet Anda.</p>
+                        <div className="flex gap-2">
+                            <input className="w-full p-2 border rounded text-sm" placeholder="https://script.google.com/macros/s/..." value={newConfig} onChange={(e) => setNewConfig(e.target.value)} />
+                            <Button onClick={handleSaveConfig}>Simpan URL</Button>
+                        </div>
                     </Card>
-                    <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none">
-                        <h3 className="text-green-100 font-medium">Hadir Hari Ini</h3>
-                        <p className="text-3xl font-bold mt-2">{uniqueAttendees}</p>
-                    </Card>
-                    <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none">
-                        <h3 className="text-orange-100 font-medium">Menunggu Persetujuan</h3>
-                        <p className="text-3xl font-bold mt-2">{pendingPermits.length}</p>
-                    </Card>
-                    <div className="md:col-span-3">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Aktivitas Absensi Terbaru</h3>
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 border-b">
-                                <tr>
-                                <th className="p-4 font-medium text-gray-600">Nama</th>
-                                <th className="p-4 font-medium text-gray-600">Waktu</th>
-                                <th className="p-4 font-medium text-gray-600">Tipe</th>
-                                <th className="p-4 font-medium text-gray-600">Lokasi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {logs.length === 0 ? (
-                                    <tr><td colSpan="4" className="p-4 text-center text-gray-400">Belum ada aktivitas absensi.</td></tr>
-                                ) : (
-                                    logs.slice(0, 5).map(log => (
-                                    <tr key={log.id} className="border-b last:border-0 hover:bg-gray-50">
-                                        <td className="p-4 font-medium">{log.name}</td>
-                                        <td className="p-4 text-gray-500">{formatDate(log.timestamp)}</td>
-                                        <td className="p-4"><Badge type={log.type === 'Masuk' ? 'success' : 'warning'}>{log.type}</Badge></td>
-                                        <td className="p-4 text-gray-500 truncate max-w-xs">{log.location}</td>
-                                    </tr>
-                                    ))
-                                )}
-                            </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    </div>
-                )}
-
-                {view === 'employees' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2">
-                        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                                <h3 className="font-bold text-gray-700">Daftar Karyawan & Password</h3>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-50 border-b">
-                                    <tr>
-                                    <th className="p-3">Nama/Email</th>
-                                    <th className="p-3">Divisi/Lokasi</th>
-                                    <th className="p-3">Password</th>
-                                    <th className="p-3">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {users.filter(u => u.role !== 'admin').map(u => (
-                                    <tr key={u.id} className="border-b">
-                                        <td className="p-3">
-                                            <div className="font-medium text-gray-900">{u.name}</div>
-                                            <div className="text-xs text-gray-500">{u.email}</div>
-                                        </td>
-                                        <td className="p-3">
-                                            <div className="text-xs font-semibold">{u.department}</div>
-                                            <div className="text-xs text-gray-500">{u.location}</div>
-                                        </td>
-                                        <td className="p-3">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-xs">
-                                                    {showPassword[u.id] ? u.password : '••••••'}
-                                                </span>
-                                                <button onClick={() => togglePassword(u.id)} className="text-gray-400 hover:text-blue-600">
-                                                    {showPassword[u.id] ? <EyeOff size={14}/> : <Eye size={14}/>}
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td className="p-3">
-                                            <button onClick={() => handleResetUserPassword(u.id)} className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 flex items-center gap-1">
-                                                <Key size={12}/> Reset
-                                            </button>
-                                        </td>
-                                    </tr>
-                                    ))}
-                                </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <Card>
-                            <h3 className="font-bold text-gray-800 mb-4">Tambah Anggota</h3>
-                            <form onSubmit={handleAddUser} className="space-y-3">
-                                <input className="w-full p-2 border rounded text-sm" placeholder="Nama Lengkap" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} required />
-                                <input className="w-full p-2 border rounded text-sm" type="email" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
-                                <input className="w-full p-2 border rounded text-sm" placeholder="Divisi (Cth: PUPR)" value={newUser.department} onChange={e => setNewUser({...newUser, department: e.target.value})} required />
-                                <input className="w-full p-2 border rounded text-sm" placeholder="Jabatan" value={newUser.position} onChange={e => setNewUser({...newUser, position: e.target.value})} required />
-                                <select className="w-full p-2 border rounded text-sm bg-white" value={newUser.location} onChange={(e) => setNewUser({...newUser, location: e.target.value})} required >
-                                    <option value="">Pilih Lokasi Penempatan</option>
-                                    {LOCATIONS.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
-                                </select>
-                                <Button className="w-full" variant="success">Simpan Data</Button>
-                            </form>
-                        </Card>
-                    </div>
-                    </div>
-                )}
-
-                {/* --- Other views (approvals, reports, announcements, database) same as before --- */}
-                {view === 'approvals' && (
-                    <div className="space-y-4">
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                            <h2 className="font-bold text-gray-700 text-lg">Persetujuan Izin/Cuti</h2>
-                        </div>
-                        <div className="bg-white rounded-xl shadow-sm border overflow-hidden overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-50 border-b">
-                                <tr>
-                                    <th className="p-4">Nama</th>
-                                    <th className="p-4">Jenis</th>
-                                    <th className="p-4">Tanggal</th>
-                                    <th className="p-4">Alasan</th>
-                                    <th className="p-4">Status</th>
-                                    <th className="p-4">Aksi</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {permits.length === 0 ? (
-                                    <tr><td colSpan="6" className="p-8 text-center text-gray-400">Tidak ada data pengajuan.</td></tr>
-                                ) : (
-                                    permits.sort((a,b) => new Date(b.dateApplied) - new Date(a.dateApplied)).map(permit => (
-                                        <tr key={permit.id} className="border-b hover:bg-gray-50">
-                                            <td className="p-4 font-medium">{permit.name}</td>
-                                            <td className="p-4"><Badge type="info">{permit.type}</Badge></td>
-                                            <td className="p-4">
-                                                {formatSimpleDate(permit.startDate)} - {formatSimpleDate(permit.endDate)}
-                                            </td>
-                                            <td className="p-4 text-gray-600 italic">"{permit.reason}"</td>
-                                            <td className="p-4">
-                                                <Badge type={permit.status === 'Approved' ? 'success' : permit.status === 'Rejected' ? 'danger' : 'warning'}>
-                                                    {permit.status}
-                                                </Badge>
-                                            </td>
-                                            <td className="p-4">
-                                                {permit.status === 'Pending' && (
-                                                    <div className="flex gap-2">
-                                                        <button onClick={() => handlePermitAction(permit.id, 'Approved')} className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200" title="Setujui"><CheckCircle size={18}/></button>
-                                                        <button onClick={() => handlePermitAction(permit.id, 'Rejected')} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200" title="Tolak"><XCircle size={18}/></button>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
-                {view === 'reports' && (
-                    <div className="space-y-4">
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
-                                <h2 className="font-bold text-gray-700 text-lg">Laporan Kehadiran</h2>
-                                <Button icon={Download} onClick={handleExportCSV}>Export Data Terfilter</Button>
-                            </div>
-                            <div className="flex flex-wrap gap-4 items-end bg-gray-50 p-3 rounded-lg">
-                                <div><label className="block text-xs font-bold text-gray-500 mb-1">Dari</label><input type="date" className="p-2 border rounded-lg text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
-                                <div><label className="block text-xs font-bold text-gray-500 mb-1">Sampai</label><input type="date" className="p-2 border rounded-lg text-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-xl shadow-sm border overflow-hidden overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-50 border-b">
-                                <tr>
-                                    <th className="p-4">Tanggal</th>
-                                    <th className="p-4">Nama</th>
-                                    <th className="p-4">Status</th>
-                                    <th className="p-4">Waktu</th>
-                                    <th className="p-4">Lokasi</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {filteredLogs.length === 0 ? (
-                                    <tr><td colSpan="5" className="p-4 text-center text-gray-400">Data tidak ditemukan.</td></tr>
-                                ) : (
-                                    filteredLogs.map(log => (
-                                        <tr key={log.id} className="border-b hover:bg-gray-50">
-                                        <td className="p-4">{new Date(log.timestamp).toLocaleDateString()}</td>
-                                        <td className="p-4 font-medium">{log.name}</td>
-                                        <td className="p-4"><Badge type={log.type === 'Masuk' ? 'success' : 'warning'}>{log.type}</Badge></td>
-                                        <td className="p-4">{new Date(log.timestamp).toLocaleTimeString()}</td>
-                                        <td className="p-4 text-xs text-gray-500">{log.location}</td>
-                                        </tr>
-                                    ))
-                                )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
-                {view === 'announcements' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Card>
-                            <h3 className="font-bold mb-4">Buat Pengumuman Baru</h3>
-                            <form onSubmit={(e) => { e.preventDefault(); handleAddAnnouncement(e.target.content.value); e.target.reset(); }}>
-                                <textarea name="content" className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Isi pengumuman..."></textarea>
-                                <Button className="w-full mt-3">Kirim</Button>
-                            </form>
-                        </Card>
-                        <div className="space-y-3">
-                            {announcements.map(ann => (
-                                <div key={ann.id} className="bg-white p-4 rounded-lg border shadow-sm">
-                                    <h4 className="font-bold text-gray-800">{ann.title}</h4>
-                                    <p className="text-sm text-gray-600 mt-1">{ann.content}</p>
-                                    <p className="text-xs text-gray-400 mt-2">{ann.date}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {view === 'database' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <Card className="border-l-4 border-blue-500">
-                            <h3 className="font-bold text-lg mb-2">Backup JSON</h3>
-                            <Button onClick={handleBackupJSON} className="w-full" variant="primary">Download</Button>
-                        </Card>
-                        <Card className="border-l-4 border-green-500">
-                            <h3 className="font-bold text-lg mb-2">Email Laporan</h3>
-                            <p className="text-xs text-gray-500 mb-4">Kirim database ke: karsasentana@gmail.com</p>
-                            <Button onClick={handleEmailBackup} className="w-full" variant="success">Kirim Email</Button>
-                        </Card>
-                        <Card className="border-l-4 border-purple-500">
-                            <h3 className="font-bold text-lg mb-2">Restore JSON</h3>
-                            <div className="relative">
-                                <input type="file" accept=".json" onChange={handleRestoreJSON} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                <Button className="w-full" variant="outline">Upload File</Button>
-                            </div>
-                        </Card>
-                        <Card className="border-l-4 border-red-500 md:col-span-3">
-                            <div className="flex justify-between items-center">
-                                <h3 className="font-bold text-lg text-red-700">Zona Bahaya</h3>
-                                <Button onClick={handleResetSystem} variant="danger">Reset Total</Button>
-                            </div>
-                        </Card>
-                    </div>
-                )}
+                    <Card className="border-l-4 border-blue-500"> <h3 className="font-bold text-lg mb-2">Backup JSON</h3> <Button onClick={handleBackupJSON} className="w-full">Download</Button> </Card> 
+                    <Card className="border-l-4 border-green-500"> <h3 className="font-bold text-lg mb-2">Email Laporan</h3> <Button onClick={handleEmailBackup} className="w-full" variant="success">Kirim Email</Button> </Card> 
+                    <Card className="border-l-4 border-purple-500"> <h3 className="font-bold text-lg mb-2">Restore JSON</h3> <div className="relative"><input type="file" accept=".json" onChange={handleRestoreJSON} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /><Button className="w-full" variant="outline">Upload File</Button></div> </Card> 
+                    <Card className="border-l-4 border-red-500 md:col-span-3"> <div className="flex justify-between items-center"> <h3 className="font-bold text-lg text-red-700">Zona Bahaya</h3> <Button onClick={handleResetSystem} variant="danger">Reset Total</Button> </div> </Card> 
+                </div> )}
                 </div>
             );
         }
 
         // --- DASHBOARD KARYAWAN ---
-        function EmployeeDashboard({ user, logs, setLogs, announcements, permits, setPermits }) {
+        function EmployeeDashboard({ user, logs, announcements, permits, updateData, pushToGoogleSheets }) {
             const [activeTab, setActiveTab] = useState('absen'); 
             const [isCameraOpen, setIsCameraOpen] = useState(false);
             const [location, setLocation] = useState(null);
             const [photo, setPhoto] = useState(null);
             const videoRef = useRef(null);
-            const canvasRef = useRef(null);
             const [permitForm, setPermitForm] = useState({ type: 'Sakit', startDate: '', endDate: '', reason: '' });
             const myLogs = logs.filter(l => l.userId === user.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
             const myPermits = permits.filter(p => p.userId === user.id).sort((a,b) => new Date(b.dateApplied) - new Date(a.dateApplied));
             const startCamera = async () => { try { setIsCameraOpen(true); const stream = await navigator.mediaDevices.getUserMedia({ video: true }); if (videoRef.current) videoRef.current.srcObject = stream; } catch (err) { alert("Gagal akses kamera."); } };
-            const takePhoto = () => { const video = videoRef.current; const canvas = canvasRef.current; if (video && canvas) { const context = canvas.getContext('2d'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; context.drawImage(video, 0, 0, canvas.width, canvas.height); setPhoto(canvas.toDataURL('image/png')); video.srcObject.getTracks().forEach(track => track.stop()); setIsCameraOpen(false); } };
+            const takePhoto = () => { const video = videoRef.current; const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0); setPhoto(canvas.toDataURL('image/png')); video.srcObject.getTracks().forEach(track => track.stop()); setIsCameraOpen(false); };
             const getLocation = () => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition( (position) => setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }), () => alert("Gagal lokasi") ); } };
             useEffect(() => { if (activeTab === 'absen') getLocation(); }, [activeTab]);
-            const handleSubmitAttendance = (type) => { if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); 
-                // PENTING: Functional Update untuk setLogs agar data tidak tertimpa
-                setLogs(prevLogs => [{ id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' }, ...prevLogs]); 
+            const handleSubmitAttendance = (type) => { 
+                if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); 
+                const newLog = { id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' };
+                updateData('logs', [newLog, ...logs]); 
+                // Push to Google Sheets
+                pushToGoogleSheets({ name: user.name, type: type, status: 'Hadir', location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, info: 'Selfie OK' });
                 setPhoto(null); alert(`Absen ${type} Berhasil!`); 
             };
             const handleSubmitPermit = (e) => { e.preventDefault(); 
-                // PENTING: Functional Update untuk setPermits
-                setPermits(prevPermits => [{ id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() }, ...prevPermits]); 
-                setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' }); alert("Pengajuan berhasil dikirim! Menunggu persetujuan admin."); 
+                const newPermit = { id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() };
+                updateData('permits', [newPermit, ...permits]); 
+                // Push to Google Sheets
+                pushToGoogleSheets({ name: user.name, type: 'Pengajuan Izin', status: 'Pending', location: '-', info: `${permitForm.type}: ${permitForm.reason}` });
+                setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' }); alert("Pengajuan berhasil dikirim!"); 
             };
 
             return (
@@ -848,7 +444,7 @@
                     <button onClick={() => setActiveTab('permit')} className={`p-4 rounded-xl flex flex-col items-center gap-2 transition ${activeTab === 'permit' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-white shadow-sm text-gray-600'}`}> <FileText /> <span className="text-xs font-bold">Izin/Cuti</span> </button>
                 </div>
                 {activeTab === 'absen' && ( <Card className="space-y-6"> <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg"> <div className="flex items-center gap-3"><MapPin size={16} /> <span className="text-sm font-bold">{location ? 'Lokasi Terkunci' : 'Mencari Lokasi...'}</span></div> {location && <Badge type="success">Akurat</Badge>} </div> <div className="relative bg-black rounded-xl overflow-hidden aspect-[4/3] flex items-center justify-center"> {!isCameraOpen && !photo && <Button onClick={startCamera} variant="outline" className="bg-white/10 text-white border-white/20">Buka Kamera</Button>} {isCameraOpen && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>} {photo && <img src={photo} className="w-full h-full object-cover" />} {isCameraOpen && <div className="absolute bottom-4 left-0 right-0 flex justify-center"><button onClick={takePhoto} className="w-16 h-16 bg-white rounded-full border-4 flex items-center justify-center"><div className="w-12 h-12 bg-red-500 rounded-full"></div></button></div>} </div> {photo && <div className="flex flex-col gap-3"> <Button variant="success" onClick={() => handleSubmitAttendance('Masuk')}>Absen Masuk</Button> <Button variant="warning" onClick={() => handleSubmitAttendance('Istirahat')}>Absen Istirahat</Button> <Button variant="danger" onClick={() => handleSubmitAttendance('Pulang')}>Absen Pulang</Button> </div>} {photo && <Button variant="outline" className="w-full" onClick={() => setPhoto(null)}>Foto Ulang</Button>} </Card> )}
-                {activeTab === 'permit' && ( <div className="space-y-6"> <Card> <h3 className="font-bold text-gray-800 mb-4">Buat Pengajuan Baru</h3> <form onSubmit={handleSubmitPermit} className="space-y-3"> <div> <label className="text-xs font-bold text-gray-500">Jenis Izin</label> <select className="w-full p-2 border rounded-lg mt-1" value={permitForm.type} onChange={e => setPermitForm({...permitForm, type: e.target.value})}> <option value="Sakit">Sakit</option> <option value="Izin">Izin (Keperluan Pribadi)</option> <option value="Cuti Tahunan">Cuti Tahunan</option> <option value="Cuti Melahirkan">Cuti Melahirkan</option> <option value="Dinas Luar">Dinas Luar</option> </select> </div> <div className="grid grid-cols-2 gap-2"> <div> <label className="text-xs font-bold text-gray-500">Mulai</label> <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.startDate} onChange={e => setPermitForm({...permitForm, startDate: e.target.value})} /> </div> <div> <label className="text-xs font-bold text-gray-500">Sampai</label> <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.endDate} onChange={e => setPermitForm({...permitForm, endDate: e.target.value})} /> </div> </div> <div> <label className="text-xs font-bold text-gray-500">Alasan / Keterangan</label> <textarea required className="w-full p-2 border rounded-lg mt-1 h-20" placeholder="Jelaskan alasan pengajuan..." value={permitForm.reason} onChange={e => setPermitForm({...permitForm, reason: e.target.value})}></textarea> </div> <Button className="w-full">Kirim Pengajuan</Button> </form> </Card> <div className="space-y-3"> <h3 className="font-bold text-gray-700">Riwayat Pengajuan Saya</h3> {myPermits.length === 0 ? <p className="text-center text-gray-400 py-4">Belum ada pengajuan.</p> : myPermits.map(p => ( <div key={p.id} className="bg-white p-4 rounded-xl border shadow-sm"> <div className="flex justify-between items-start mb-2"> <Badge type="info">{p.type}</Badge> <Badge type={p.status === 'Approved' ? 'success' : p.status === 'Rejected' ? 'danger' : 'warning'}>{p.status}</Badge> </div> <p className="text-sm font-bold text-gray-800">{formatSimpleDate(p.startDate)} - {formatSimpleDate(p.endDate)}</p> <p className="text-sm text-gray-600 mt-1">{p.reason}</p> </div> ))} </div> </div> )}
+                {activeTab === 'permit' && ( <div className="space-y-6"> <Card> <h3 className="font-bold text-gray-800 mb-4">Buat Pengajuan Baru</h3> <form onSubmit={handleSubmitPermit} className="space-y-3"> <div> <label className="text-xs font-bold text-gray-500">Jenis Izin</label> <select className="w-full p-2 border rounded-lg mt-1" value={permitForm.type} onChange={e => setPermitForm({...permitForm, type: e.target.value})}> <option value="Sakit">Sakit</option> <option value="Izin">Izin (Keperluan Pribadi)</option> <option value="Cuti Tahunan">Cuti Tahunan</option> <option value="Cuti Melahirkan">Cuti Melahirkan</option> <option value="Dinas Luar">Dinas Luar</option> </select> </div> <div className="grid grid-cols-2 gap-2"> <div> <label className="text-xs font-bold text-gray-500">Mulai</label> <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.startDate} onChange={e => setPermitForm({...permitForm, startDate: e.target.value})} /> </div> <div> <label className="text-xs font-bold text-gray-500">Sampai</label> <input type="date" required className="w-full p-2 border rounded-lg mt-1" value={permitForm.endDate} onChange={e => setPermitForm({...permitForm, endDate: e.target.value})} /> </div> </div> <div> <label className="text-xs font-bold text-gray-500">Alasan / Keterangan</label> <textarea required className="w-full p-2 border rounded-lg mt-1 h-20" placeholder="Jelaskan alasan pengajuan..." value={permitForm.reason} onChange={e => setPermitForm({...permitForm, reason: e.target.value})}></textarea> </div> <Button className="w-full">Kirim Pengajuan</Button> </form> </Card> </div> )}
                 {activeTab === 'history' && ( <div className="space-y-4"> <h3 className="font-bold text-gray-700">Riwayat Absensi</h3> {myLogs.length === 0 ? <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-dashed">Belum ada riwayat.</div> : myLogs.map(log => ( <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border flex items-center gap-4"> <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${log.type === 'Masuk' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}> {log.type === 'Masuk' ? <LogOut className="rotate-180" size={20} /> : <LogOut size={20} />} </div> <div className="flex-1"> <h4 className="font-bold text-gray-800">{log.type}</h4> <p className="text-xs text-gray-500">{formatDate(log.timestamp)}</p> </div> {log.photo && <img src={log.photo} className="w-12 h-12 rounded-lg object-cover border" />} </div> )) } </div> )}
                 <canvas ref={canvasRef} className="hidden"></canvas>
                 </div>
