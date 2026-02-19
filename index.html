@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Aplikasi Absensi Online Real-time dengan Firebase">
+    <meta name="description" content="Aplikasi Absensi Online dengan Integrasi Google Sheets">
     <meta name="theme-color" content="#2563eb">
-    <title>Sistem Absensi Pro (Cloud)</title>
+    <title>Sistem Absensi Pro</title>
     
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☁️</text></svg>">
@@ -16,25 +16,21 @@
     <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Import Map: React & Firebase -->
+    <!-- Import Map -->
     <script type="importmap">
     {
         "imports": {
             "react": "https://esm.sh/react@18.2.0",
             "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-            "lucide-react": "https://esm.sh/lucide-react@0.263.1",
-            "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
-            "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"
+            "lucide-react": "https://esm.sh/lucide-react@0.263.1"
         }
     }
     </script>
 
     <style>
         body { -webkit-tap-highlight-color: transparent; }
-        .loader { border: 3px solid #f3f3f3; border-radius: 50%; border-top: 3px solid #3498db; width: 20px; height: 20px; -webkit-animation: spin 1s linear infinite; animation: spin 1s linear infinite; }
-        @-webkit-keyframes spin { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
@@ -45,53 +41,45 @@
         import { createRoot } from 'react-dom/client';
         import { 
             Camera, MapPin, User, LogOut, FileText, 
-            Users, Bell, Calendar, CheckCircle, XCircle, 
-            Menu, Download, Upload, Clock, Home, AlertCircle, Coffee, Trash2,
-            Database, Save, Mail, Filter, Search, ClipboardCheck, Plus, RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, Activity, Cloud
+            Users, Bell, Clock, Home, AlertCircle, Coffee, 
+            Database, Save, Mail, Search, ClipboardCheck, 
+            RefreshCw, UserPlus, ArrowLeft, Key, Eye, EyeOff, 
+            Activity, Cloud, Link2, Wifi, WifiOff, Settings,
+            CheckCircle, XCircle, Download, Upload, Trash2, Calendar, HardDrive, Plus, Filter, Lock
         } from 'lucide-react';
-        
-        // --- FIREBASE IMPORTS ---
-        import { initializeApp } from 'firebase/app';
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, query, setDoc } from 'firebase/firestore';
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 
-        // --- KONFIGURASI FIREBASE ---
-        // CATATAN PENTING:
-        // Jika Anda men-deploy ini ke hosting sendiri (bukan di editor ini), 
-        // Anda HARUS mengganti konfigurasi di bawah dengan Config Firebase Project Anda sendiri.
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
-        
-        let db = null;
-        let auth = null;
-        
-        if (firebaseConfig) {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-        }
+        // --- DATA AWAL (JIKA DATABASE KOSONG) ---
+        const INITIAL_USERS = [
+            { 
+                id: 1, 
+                name: 'Administrator', 
+                email: 'marliantoskyscraper@gmail.com', 
+                role: 'admin', 
+                password: 'abc12345', 
+                department: 'Management', 
+                position: 'Head Admin', 
+                location: 'PALANGKARAYA', 
+                phone: '-' 
+            },
+            { 
+                id: 2, 
+                name: 'Marlianto', 
+                email: 'marlianto@kantor.com', 
+                role: 'employee', 
+                password: 'marli123', 
+                department: 'PUPR', 
+                position: 'Staff', 
+                location: 'KOBAR', 
+                phone: '-' 
+            }
+        ];
 
         const LOCATIONS = ['KOBAR', 'LAMANDAU', 'SUKAMARA', 'PALANGKARAYA'];
 
-        // --- INITIAL SEED DATA (Hanya dipakai jika DB kosong) ---
-        const SEED_USERS = [
-            { id: 1, name: 'Administrator', email: 'marliantoskyscraper@gmail.com', role: 'admin', password: 'abc12345', department: 'Management', position: 'Head Admin', location: 'PALANGKARAYA' },
-            { id: 2, name: 'Marlianto', email: 'marlianto@kantor.com', role: 'employee', password: 'marli123', department: 'PUPR', position: 'Staff', location: 'KOBAR' }
-        ];
-
-        // --- HELPER FUNCTIONS ---
-        const formatDate = (dateString) => {
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-            try { return new Date(dateString).toLocaleDateString('id-ID', options); } catch(e) { return dateString; }
-        };
-        const formatSimpleDate = (dateString) => {
-            try { return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }); } catch(e) { return dateString; }
-        };
-
-        // --- COMPONENTS ---
+        // --- KOMPONEN UI ---
         const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, icon: Icon }) => {
             const variants = {
-                primary: "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300",
+                primary: "bg-blue-600 text-white hover:bg-blue-700",
                 secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200",
                 danger: "bg-red-500 text-white hover:bg-red-600",
                 success: "bg-green-600 text-white hover:bg-green-700",
@@ -111,349 +99,348 @@
             return <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[type] || styles.info}`}>{children}</span>;
         };
 
-        // --- MAIN APP ---
+        // --- APLIKASI UTAMA ---
         function App() {
-            const [authUser, setAuthUser] = useState(null); // Firebase Auth
-            const [currentUser, setCurrentUser] = useState(null); // App User
-            const [isConfigured, setIsConfigured] = useState(!!firebaseConfig);
-
-            // Data State
-            const [users, setUsers] = useState([]);
+            // STATE UTAMA
+            const [users, setUsers] = useState(INITIAL_USERS);
             const [logs, setLogs] = useState([]);
-            const [announcements, setAnnouncements] = useState([]);
             const [permits, setPermits] = useState([]);
-            const [loading, setLoading] = useState(true);
+            const [announcements, setAnnouncements] = useState([{ id: 1, title: 'Selamat Datang', content: 'Sistem Absensi Online Siap Digunakan.', date: new Date().toLocaleDateString() }]);
+            
+            // CONFIG & SESSION
+            const [currentUser, setCurrentUser] = useState(null);
+            const [cloudUrl, setCloudUrl] = useState(localStorage.getItem('app_cloud_url') || '');
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
+            const [isSyncing, setIsSyncing] = useState(false);
 
-            // 1. Initialize Auth
+            // --- LOAD DATA AWAL DARI LOCALSTORAGE ---
             useEffect(() => {
-                if (!auth) return;
-                const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                };
-                initAuth();
-                return onAuthStateChanged(auth, setAuthUser);
+                const savedUsers = localStorage.getItem('app_users');
+                if (savedUsers) setUsers(JSON.parse(savedUsers));
+                
+                const savedLogs = localStorage.getItem('app_logs');
+                if (savedLogs) setLogs(JSON.parse(savedLogs));
+
+                const savedPermits = localStorage.getItem('app_permits');
+                if (savedPermits) setPermits(JSON.parse(savedPermits));
+
+                const session = sessionStorage.getItem('currentUser');
+                if (session) setCurrentUser(JSON.parse(session));
+
+                // Listener status online/offline
+                window.addEventListener('online', () => setIsOnline(true));
+                window.addEventListener('offline', () => setIsOnline(false));
             }, []);
 
-            // 2. Real-time Listeners (Firestore)
-            useEffect(() => {
-                if (!authUser || !db) return;
+            // --- FUNGSI SIMPAN DATA (LOCAL + CLOUD) ---
+            const saveData = (type, newData) => {
+                // 1. Simpan ke State & LocalStorage
+                if (type === 'users') {
+                    setUsers(newData);
+                    localStorage.setItem('app_users', JSON.stringify(newData));
+                } else if (type === 'logs') {
+                    setLogs(newData);
+                    localStorage.setItem('app_logs', JSON.stringify(newData));
+                } else if (type === 'permits') {
+                    setPermits(newData);
+                    localStorage.setItem('app_permits', JSON.stringify(newData));
+                }
 
-                const unsubUsers = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'users'), (snap) => {
-                    const data = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
-                    // Auto-seed if empty
-                    if (data.length === 0) {
-                        SEED_USERS.forEach(u => addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), u));
-                    } else {
-                        setUsers(data);
-                    }
-                }, (err) => console.error("Users sync error:", err));
-
-                const unsubLogs = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), (snap) => {
-                    setLogs(snap.docs.map(d => ({ docId: d.id, ...d.data() })));
-                });
-
-                const unsubAnnouncements = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'announcements'), (snap) => {
-                    setAnnouncements(snap.docs.map(d => ({ docId: d.id, ...d.data() })));
-                });
-
-                const unsubPermits = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'permits'), (snap) => {
-                    setPermits(snap.docs.map(d => ({ docId: d.id, ...d.data() })));
-                    setLoading(false);
-                });
-
-                return () => { unsubUsers(); unsubLogs(); unsubAnnouncements(); unsubPermits(); };
-            }, [authUser]);
-
-            // --- AUTH VIEW STATE ---
-            const [authView, setAuthView] = useState('login');
-            const [formData, setFormData] = useState({});
-            const [error, setError] = useState('');
-
-            // --- ACTIONS ---
-            const handleLogin = (e) => {
-                e.preventDefault();
-                setError('');
-                const email = formData.email?.trim().toLowerCase();
-                const pass = formData.password?.trim();
-                
-                const user = users.find(u => u.email.toLowerCase() === email && u.password === pass);
-                if (user) {
-                    setCurrentUser(user);
-                    sessionStorage.setItem('app_user', JSON.stringify(user));
-                } else {
-                    setError('Email atau password salah. Cek kembali data Anda.');
+                // 2. Kirim ke Cloud (Google Sheets) jika ada URL
+                if (cloudUrl && navigator.onLine) {
+                    // Ambil item terakhir yang baru saja ditambahkan
+                    const latestItem = newData[0]; 
+                    // Kita kirim sebagai single object agar ringan
+                    fetch(cloudUrl, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            dataType: type, // 'logs', 'users', atau 'permits'
+                            data: latestItem
+                        })
+                    }).then(() => console.log("Terkirim ke Cloud")).catch(e => console.error("Gagal kirim cloud", e));
                 }
             };
 
-            const handleRegister = async (e) => {
-                e.preventDefault();
-                setError('');
-                const email = formData.email?.trim().toLowerCase();
-                
-                if (users.find(u => u.email.toLowerCase() === email)) {
-                    setError('Email sudah terdaftar!'); return;
-                }
-
+            // --- FUNGSI TARIK DATA DARI CLOUD (AUTO SYNC) ---
+            const pullFromCloud = async () => {
+                if (!cloudUrl || !navigator.onLine) return;
+                setIsSyncing(true);
                 try {
-                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), {
-                        id: Date.now(),
-                        name: formData.name,
-                        email: email,
-                        password: formData.password,
-                        department: formData.department,
-                        position: formData.position,
-                        location: formData.location,
-                        role: 'employee',
-                        joinedAt: new Date().toISOString()
-                    });
-                    alert('Registrasi Berhasil! Silakan login.');
-                    setAuthView('login');
-                } catch (err) {
-                    setError('Gagal mendaftar. Coba lagi.');
+                    // Fetch data dari Google Script (GET Request)
+                    const response = await fetch(cloudUrl);
+                    const cloudData = await response.json();
+                    
+                    if (cloudData.logs && Array.isArray(cloudData.logs)) {
+                        // Gabungkan data, hindari duplikat
+                        const currentIds = new Set(logs.map(l => l.id));
+                        const newLogs = cloudData.logs.filter(l => !currentIds.has(l.id));
+                        if (newLogs.length > 0) {
+                            const merged = [...newLogs, ...logs].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                            setLogs(merged);
+                            localStorage.setItem('app_logs', JSON.stringify(merged));
+                        }
+                    }
+                    // Bisa ditambahkan logika serupa untuk Users dan Permits jika script Google Sheet mendukung
+                } catch (e) {
+                    console.error("Gagal tarik data cloud", e);
+                } finally {
+                    setIsSyncing(false);
                 }
+            };
+
+            // Auto-Sync Interval (Setiap 10 Detik)
+            useEffect(() => {
+                if(cloudUrl) {
+                    const interval = setInterval(pullFromCloud, 10000); 
+                    return () => clearInterval(interval);
+                }
+            }, [cloudUrl, logs]);
+
+            // --- AUTHENTICATION ---
+            const handleLogin = (email, password) => {
+                const user = users.find(u => u.email.toLowerCase() === email.toLowerCase().trim() && u.password === password.trim());
+                if (user) {
+                    setCurrentUser(user);
+                    sessionStorage.setItem('currentUser', JSON.stringify(user));
+                    // Trigger sync saat login
+                    if(cloudUrl) pullFromCloud();
+                    return { success: true };
+                }
+                return { success: false, message: 'Email atau password salah.' };
+            };
+
+            const handleRegister = (data) => {
+                if (users.find(u => u.email.toLowerCase() === data.email.toLowerCase())) {
+                    return { success: false, message: 'Email sudah terdaftar.' };
+                }
+                const newUser = { ...data, id: Date.now(), role: 'employee' };
+                saveData('users', [...users, newUser]);
+                return { success: true };
             };
 
             const handleLogout = () => {
                 setCurrentUser(null);
-                sessionStorage.removeItem('app_user');
-                setFormData({});
+                sessionStorage.removeItem('currentUser');
             };
 
-            // --- RESTORE SESSION ---
-            useEffect(() => {
-                const saved = sessionStorage.getItem('app_user');
-                if (saved) setCurrentUser(JSON.parse(saved));
-            }, []);
-
-            if (!isConfigured) {
-                return (
-                    <div className="flex h-screen items-center justify-center p-4 text-center">
-                        <div className="max-w-md bg-white p-6 rounded-xl shadow-lg">
-                            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4"/>
-                            <h2 className="text-xl font-bold mb-2">Konfigurasi Firebase Diperlukan</h2>
-                            <p className="text-gray-600 mb-4">Aplikasi ini membutuhkan konfigurasi Firebase agar fitur Cloud Sync berfungsi.</p>
-                            <p className="text-xs text-gray-500">Silakan jalankan aplikasi ini di lingkungan yang menyediakan config Firebase atau tambahkan config manual.</p>
-                        </div>
-                    </div>
-                );
-            }
-
+            // --- RENDER UTAMA ---
             if (!currentUser) {
-                return (
-                    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-                        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
-                            <div className="bg-blue-600 p-8 text-center text-white">
-                                <Cloud size={40} className="mx-auto mb-2 opacity-80"/>
-                                <h1 className="text-2xl font-bold">Absensi Cloud</h1>
-                                <p className="text-blue-100 text-sm">Real-time Sync System</p>
-                            </div>
-                            <div className="p-8">
-                                {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 flex gap-2"><AlertCircle size={16}/>{error}</div>}
-                                
-                                {authView === 'login' ? (
-                                    <form onSubmit={handleLogin} className="space-y-4">
-                                        <h2 className="font-bold text-gray-700 text-center">Login Akun</h2>
-                                        <input className="w-full p-3 border rounded-lg" type="email" placeholder="Email" onChange={e => setFormData({...formData, email: e.target.value})} required />
-                                        <input className="w-full p-3 border rounded-lg" type="password" placeholder="Password" onChange={e => setFormData({...formData, password: e.target.value})} required />
-                                        <Button className="w-full">Masuk</Button>
-                                        <p className="text-center text-sm text-gray-500 mt-4">
-                                            Belum punya akun? <button type="button" onClick={() => setAuthView('register')} className="text-blue-600 font-bold hover:underline">Daftar</button>
-                                        </p>
-                                    </form>
-                                ) : (
-                                    <form onSubmit={handleRegister} className="space-y-3">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <button type="button" onClick={() => setAuthView('login')}><ArrowLeft size={20}/></button>
-                                            <h2 className="font-bold text-gray-700">Pendaftaran</h2>
-                                        </div>
-                                        <input className="w-full p-3 border rounded-lg" placeholder="Nama Lengkap" onChange={e => setFormData({...formData, name: e.target.value})} required />
-                                        <input className="w-full p-3 border rounded-lg" type="email" placeholder="Email" onChange={e => setFormData({...formData, email: e.target.value})} required />
-                                        <input className="w-full p-3 border rounded-lg" type="password" placeholder="Password" onChange={e => setFormData({...formData, password: e.target.value})} required />
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <input className="w-full p-3 border rounded-lg" placeholder="Divisi" onChange={e => setFormData({...formData, department: e.target.value})} required />
-                                            <input className="w-full p-3 border rounded-lg" placeholder="Jabatan" onChange={e => setFormData({...formData, position: e.target.value})} required />
-                                        </div>
-                                        <select className="w-full p-3 border rounded-lg bg-white" onChange={e => setFormData({...formData, location: e.target.value})} required>
-                                            <option value="">Pilih Lokasi</option>
-                                            {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
-                                        </select>
-                                        <Button className="w-full" variant="success">Daftar Sekarang</Button>
-                                    </form>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                );
+                return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} locations={LOCATIONS} />;
             }
 
             return (
-                <div className="min-h-screen bg-gray-50 flex flex-col">
-                    <header className="bg-white shadow-sm sticky top-0 z-50 px-4 py-3 flex justify-between items-center">
+                <div className="flex flex-col min-h-screen">
+                    {/* Header */}
+                    <div className="bg-white shadow-sm sticky top-0 z-50 px-4 py-3 flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-blue-600 rounded text-white flex items-center justify-center font-bold">A</div>
-                            <span className="font-bold text-gray-700 hidden sm:inline">Absensi Cloud</span>
+                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">A</div>
+                            <h1 className="font-bold text-gray-800 hidden sm:block">E-Absensi Pro</h1>
                         </div>
+                        
                         <div className="flex items-center gap-3">
-                            {loading && <span className="loader"></span>}
+                            {/* Status Indikator */}
+                            <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${cloudUrl ? (isOnline ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700') : 'bg-gray-100 text-gray-500'}`}>
+                                {isSyncing ? <RefreshCw size={12} className="spin"/> : (cloudUrl ? <Cloud size={12}/> : <WifiOff size={12}/>)}
+                                <span className="hidden sm:inline">{cloudUrl ? (isOnline ? 'Cloud Aktif' : 'Offline Mode') : 'Lokal Storage'}</span>
+                            </div>
+
                             <div className="text-right hidden sm:block">
                                 <p className="text-sm font-bold text-gray-800">{currentUser.name}</p>
                                 <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
                             </div>
-                            <button onClick={handleLogout} className="p-2 bg-red-50 text-red-600 rounded-full hover:bg-red-100"><LogOut size={18}/></button>
+                            <button onClick={handleLogout} className="p-2 hover:bg-red-50 text-red-500 rounded-full"><LogOut size={20}/></button>
                         </div>
-                    </header>
+                    </div>
 
-                    <main className="flex-1 max-w-7xl w-full mx-auto p-4">
+                    {/* Konten */}
+                    <div className="flex-1 max-w-7xl w-full mx-auto p-4">
                         {currentUser.role === 'admin' ? (
-                            <AdminDashboard users={users} logs={logs} permits={permits} announcements={announcements} />
+                            <AdminDashboard 
+                                users={users} logs={logs} permits={permits} 
+                                cloudUrl={cloudUrl} setCloudUrl={(url) => { setCloudUrl(url); localStorage.setItem('app_cloud_url', url); }}
+                                onSync={pullFromCloud} isSyncing={isSyncing}
+                            />
                         ) : (
-                            <EmployeeDashboard user={currentUser} logs={logs} permits={permits} announcements={announcements} />
+                            <EmployeeDashboard 
+                                user={currentUser} logs={logs} permits={permits} 
+                                onAbsen={(log) => saveData('logs', [log, ...logs])}
+                                onPermit={(permit) => saveData('permits', [permit, ...permits])}
+                            />
                         )}
-                    </main>
+                    </div>
                 </div>
             );
         }
 
-        // --- ADMIN DASHBOARD (CLOUD) ---
-        function AdminDashboard({ users, logs, permits, announcements }) {
-            const [view, setView] = useState('overview');
-            const [newUser, setNewUser] = useState({});
+        // --- LAYAR LOGIN / DAFTAR ---
+        function AuthScreen({ onLogin, onRegister, locations }) {
+            const [view, setView] = useState('login');
+            const [formData, setFormData] = useState({ email: '', password: '', name: '', department: '', position: '', location: '' });
+            const [msg, setMsg] = useState(null);
 
-            const handleAddUser = async (e) => {
+            const submitLogin = (e) => {
                 e.preventDefault();
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), {
-                    ...newUser, id: Date.now(), role: 'employee', password: 'user123', joinedAt: new Date().toISOString()
-                });
-                alert('User added!');
-                setNewUser({});
+                const res = onLogin(formData.email, formData.password);
+                if (!res.success) setMsg({ type: 'error', text: res.message });
             };
-            
-            const handlePermit = async (id, status) => {
-                const docRef = permits.find(p => p.id === id); // Cari doc local untuk dapat docId
-                if(docRef) {
-                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'permits', docRef.docId), { status });
+
+            const submitRegister = (e) => {
+                e.preventDefault();
+                const res = onRegister(formData);
+                if (res.success) {
+                    setMsg({ type: 'success', text: 'Registrasi berhasil! Silakan login.' });
+                    setView('login');
+                } else {
+                    setMsg({ type: 'error', text: res.message });
                 }
             };
 
-            const handleExport = () => {
-                let csv = "Tanggal,Nama,Tipe,Waktu,Lokasi\n";
-                logs.forEach(l => csv += `${new Date(l.timestamp).toLocaleDateString()},${l.name},${l.type},${new Date(l.timestamp).toLocaleTimeString()},"${l.location}"\n`);
-                const link = document.createElement("a");
-                link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
-                link.download = "Laporan_Absen_Cloud.csv";
-                document.body.appendChild(link);
-                link.click();
-            };
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
+                        <div className="bg-blue-600 p-6 text-center">
+                            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                                <CheckCircle size={32} className="text-white" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-white">E-Absensi Pro</h1>
+                            <p className="text-blue-100 text-sm">Sistem Absensi Terintegrasi</p>
+                        </div>
+                        
+                        <div className="p-8">
+                            {msg && <div className={`p-3 rounded-lg text-sm mb-4 flex items-center gap-2 ${msg.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                                <AlertCircle size={16}/> {msg.text}
+                            </div>}
+
+                            {view === 'login' ? (
+                                <form onSubmit={submitLogin} className="space-y-4">
+                                    <h2 className="text-lg font-bold text-gray-800 text-center">Masuk Akun</h2>
+                                    <input className="w-full p-3 border rounded-lg bg-white text-gray-900" type="email" placeholder="Email" value={formData.email} onChange={e=>setFormData({...formData, email:e.target.value})} required />
+                                    <input className="w-full p-3 border rounded-lg bg-white text-gray-900" type="password" placeholder="Password" value={formData.password} onChange={e=>setFormData({...formData, password:e.target.value})} required />
+                                    <Button className="w-full">Masuk Sistem</Button>
+                                    <p className="text-center text-sm text-gray-500 mt-4">Belum punya akun? <button type="button" onClick={() => setView('register')} className="text-blue-600 font-bold hover:underline">Daftar</button></p>
+                                </form>
+                            ) : (
+                                <form onSubmit={submitRegister} className="space-y-3">
+                                    <div className="flex items-center gap-2 mb-2"><button type="button" onClick={() => setView('login')} className="text-gray-500"><ArrowLeft size={20}/></button><h2 className="text-lg font-bold">Pendaftaran</h2></div>
+                                    <input className="w-full p-3 border rounded-lg bg-white text-gray-900" placeholder="Nama Lengkap" value={formData.name} onChange={e=>setFormData({...formData, name:e.target.value})} required />
+                                    <input className="w-full p-3 border rounded-lg bg-white text-gray-900" type="email" placeholder="Email" value={formData.email} onChange={e=>setFormData({...formData, email:e.target.value})} required />
+                                    <input className="w-full p-3 border rounded-lg bg-white text-gray-900" type="password" placeholder="Password" value={formData.password} onChange={e=>setFormData({...formData, password:e.target.value})} required />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input className="w-full p-3 border rounded-lg bg-white text-gray-900" placeholder="Divisi (Cth: PUPR)" value={formData.department} onChange={e=>setFormData({...formData, department:e.target.value})} required />
+                                        <input className="w-full p-3 border rounded-lg bg-white text-gray-900" placeholder="Jabatan" value={formData.position} onChange={e=>setFormData({...formData, position:e.target.value})} required />
+                                    </div>
+                                    <select className="w-full p-3 border rounded-lg bg-white text-gray-900" value={formData.location} onChange={e=>setFormData({...formData, location:e.target.value})} required>
+                                        <option value="">Pilih Lokasi</option>{locations.map(l=><option key={l} value={l}>{l}</option>)}
+                                    </select>
+                                    <Button className="w-full" variant="success">Daftar Sekarang</Button>
+                                </form>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- DASHBOARD ADMIN ---
+        function AdminDashboard({ users, logs, permits, cloudUrl, setCloudUrl, onSync, isSyncing }) {
+            const [view, setView] = useState('overview');
+            const [tempUrl, setTempUrl] = useState(cloudUrl);
 
             return (
                 <div className="space-y-6">
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                        {[{id:'overview', l:'Dashboard', i:Home}, {id:'users', l:'Karyawan', i:Users}, {id:'permits', l:'Izin', i:ClipboardCheck}, {id:'reports', l:'Laporan', i:FileText}].map(t => (
-                            <button key={t.id} onClick={()=>setView(t.id)} className={`px-4 py-2 rounded-lg flex items-center gap-2 whitespace-nowrap ${view===t.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'}`}>
-                                <t.i size={16}/> {t.l}
+                    {/* Cloud Status Bar */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-full ${cloudUrl ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
+                                <Cloud size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-800">Status Sinkronisasi Cloud</h3>
+                                <p className="text-xs text-gray-500">{cloudUrl ? (isSyncing ? 'Sedang menyinkronkan...' : 'Terhubung ke Google Sheets') : 'Mode Offline (Lokal)'}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            {!cloudUrl ? (
+                                <button onClick={() => setView('settings')} className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg font-medium w-full sm:w-auto hover:bg-blue-700 transition">Hubungkan Cloud</button>
+                            ) : (
+                                <button onClick={onSync} disabled={isSyncing} className="text-sm bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium w-full sm:w-auto hover:bg-gray-50 flex items-center justify-center gap-2">
+                                    <RefreshCw size={14} className={isSyncing ? 'spin' : ''}/> {isSyncing ? 'Syncing...' : 'Tarik Data'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex overflow-x-auto gap-2 pb-2">
+                        {[{id:'overview', l:'Dashboard', i:Home}, {id:'logs', l:'Data Absensi', i:Clock}, {id:'users', l:'Karyawan', i:Users}, {id:'settings', l:'Pengaturan Cloud', i:Settings}].map(tab => (
+                            <button key={tab.id} onClick={()=>setView(tab.id)} className={`px-4 py-2 rounded-lg flex items-center gap-2 whitespace-nowrap transition ${view===tab.id ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                                <tab.i size={16}/> {tab.l}
                             </button>
                         ))}
                     </div>
 
                     {view === 'overview' && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <Card className="bg-blue-600 text-white border-none"><h3>Total Karyawan</h3><p className="text-3xl font-bold">{users.length - 1}</p></Card>
-                            <Card className="bg-green-600 text-white border-none"><h3>Hadir Hari Ini</h3><p className="text-3xl font-bold">{new Set(logs.filter(l=>new Date(l.timestamp).toDateString()===new Date().toDateString()).map(l=>l.userId)).size}</p></Card>
-                            <Card className="bg-orange-500 text-white border-none"><h3>Izin Pending</h3><p className="text-3xl font-bold">{permits.filter(p=>p.status==='Pending').length}</p></Card>
-                            
-                            <div className="md:col-span-3">
-                                <h3 className="font-bold mb-2">Aktivitas Terkini (Real-time)</h3>
-                                <div className="bg-white rounded-xl shadow border overflow-hidden">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-gray-50"><tr><th className="p-3">Nama</th><th className="p-3">Tipe</th><th className="p-3">Waktu</th><th className="p-3">Lokasi</th></tr></thead>
-                                        <tbody>
-                                            {logs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).slice(0,5).map((l,i) => (
-                                                <tr key={i} className="border-b"><td className="p-3 font-medium">{l.name}</td><td className="p-3"><Badge type={l.type==='Masuk'?'success':'danger'}>{l.type}</Badge></td><td className="p-3">{new Date(l.timestamp).toLocaleTimeString()}</td><td className="p-3 text-gray-500">{l.location}</td></tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                            <Card className="bg-blue-600 text-white border-none"><h3>Total Karyawan</h3><p className="text-3xl font-bold mt-2">{users.length - 1}</p></Card>
+                            <Card className="bg-green-600 text-white border-none"><h3>Absen Hari Ini</h3><p className="text-3xl font-bold mt-2">{new Set(logs.filter(l=>new Date(l.timestamp).toDateString() === new Date().toDateString()).map(l=>l.userId)).size}</p></Card>
+                            <Card className="bg-purple-600 text-white border-none"><h3>Total Log</h3><p className="text-3xl font-bold mt-2">{logs.length}</p></Card>
                         </div>
                     )}
 
-                    {view === 'users' && (
-                        <div className="grid md:grid-cols-3 gap-6">
-                            <div className="md:col-span-2 bg-white rounded-xl shadow border overflow-hidden">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50"><tr><th className="p-3">Nama</th><th className="p-3">Email</th><th className="p-3">Divisi</th><th className="p-3">Password</th></tr></thead>
-                                    <tbody>
-                                        {users.map(u => (
-                                            <tr key={u.id} className="border-b"><td className="p-3 font-medium">{u.name}</td><td className="p-3 text-gray-500">{u.email}</td><td className="p-3"><Badge>{u.department}</Badge></td><td className="p-3 font-mono text-xs">{u.password}</td></tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                    {view === 'logs' && (
+                        <div className="bg-white rounded-xl shadow-sm border overflow-hidden overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-gray-50 border-b"><tr><th className="p-4">Tanggal</th><th className="p-4">Nama</th><th className="p-4">Status</th><th className="p-4">Lokasi</th></tr></thead>
+                                <tbody>
+                                    {logs.length === 0 ? <tr><td colSpan="4" className="p-6 text-center text-gray-400">Belum ada data absensi</td></tr> : 
+                                    logs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map((l,i) => (
+                                        <tr key={i} className="border-b"><td className="p-4">{new Date(l.timestamp).toLocaleString()}</td><td className="p-4 font-bold">{l.name}</td><td className="p-4"><Badge type={l.type==='Masuk'?'success':'danger'}>{l.type}</Badge></td><td className="p-4 text-gray-500">{l.location}</td></tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {view === 'settings' && (
+                        <div className="max-w-2xl mx-auto">
                             <Card>
-                                <h3 className="font-bold mb-4">Tambah Karyawan</h3>
-                                <form onSubmit={handleAddUser} className="space-y-3">
-                                    <input className="w-full p-2 border rounded" placeholder="Nama" onChange={e=>setNewUser({...newUser, name:e.target.value})} required/>
-                                    <input className="w-full p-2 border rounded" placeholder="Email" onChange={e=>setNewUser({...newUser, email:e.target.value})} required/>
-                                    <input className="w-full p-2 border rounded" placeholder="Divisi" onChange={e=>setNewUser({...newUser, department:e.target.value})} required/>
-                                    <input className="w-full p-2 border rounded" placeholder="Jabatan" onChange={e=>setNewUser({...newUser, position:e.target.value})} required/>
-                                    <select className="w-full p-2 border rounded" onChange={e=>setNewUser({...newUser, location:e.target.value})} required>
-                                        <option value="">Pilih Lokasi</option>{LOCATIONS.map(l=><option key={l} value={l}>{l}</option>)}
-                                    </select>
-                                    <Button className="w-full" variant="success">Simpan ke Cloud</Button>
-                                </form>
+                                <div className="flex items-center gap-3 mb-4 text-blue-700">
+                                    <Database size={24}/> <h3 className="font-bold text-lg">Integrasi Google Sheets (Gratis)</h3>
+                                </div>
+                                <div className="space-y-4 text-sm text-gray-600">
+                                    <p>Untuk menyinkronkan data antar perangkat (HP Karyawan -> Laptop Admin), Anda perlu menghubungkan Google Sheets sebagai database.</p>
+                                    <ol className="list-decimal pl-5 space-y-2">
+                                        <li>Buka Google Sheet baru di akun <b>marliantoskyscraper@gmail.com</b>.</li>
+                                        <li>Buka menu <b>Ekstensi</b> {'>'} <b>Apps Script</b>.</li>
+                                        <li>Copy kode script di bawah ini dan Paste ke editor Apps Script:</li>
+                                        <div className="bg-gray-900 text-gray-100 p-3 rounded font-mono text-xs select-all">
+                                            {`function doPost(e){var s=SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();var d=JSON.parse(e.postData.contents);if(d.dataType==='logs'){s.appendRow([new Date(),d.data.name,d.data.type,d.data.location])}return ContentService.createTextOutput("OK");}\nfunction doGet(e){var s=SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();var r=s.getDataRange().getValues();var l=[];for(var i=1;i<r.length;i++){l.push({id:new Date(r[i][0]).getTime(),timestamp:r[i][0],name:r[i][1],type:r[i][2],location:r[i][3],userId:0})}return ContentService.createTextOutput(JSON.stringify({logs:l})).setMimeType(ContentService.MimeType.JSON);}`}
+                                        </div>
+                                        <li>Klik <b>Deploy</b> {'>'} <b>New Deployment</b>. Pilih "Web App".</li>
+                                        <li>Set "Who has access" ke <b>"Anyone"</b> (Penting!).</li>
+                                        <li>Copy URL yang diberikan (akhiran /exec) dan paste di bawah ini.</li>
+                                    </ol>
+                                    <div className="pt-4">
+                                        <label className="block font-bold text-gray-700 mb-1">Google Web App URL</label>
+                                        <input className="w-full p-3 border rounded-lg bg-gray-50" placeholder="https://script.google.com/macros/s/..../exec" value={tempUrl} onChange={e => setTempUrl(e.target.value)} />
+                                        <Button onClick={() => { setCloudUrl(tempUrl); alert('URL Tersimpan! Sistem akan mencoba sinkronisasi.'); }} className="w-full mt-3">Simpan & Hubungkan</Button>
+                                    </div>
+                                </div>
                             </Card>
                         </div>
-                    )}
-                    
-                    {view === 'reports' && (
-                        <div className="bg-white p-4 rounded-xl shadow border">
-                            <div className="flex justify-between items-center mb-4"><h2 className="font-bold">Laporan Lengkap</h2><Button onClick={handleExport} icon={Download}>Export CSV</Button></div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50"><tr><th className="p-3">Tanggal</th><th className="p-3">Nama</th><th className="p-3">Status</th><th className="p-3">Waktu</th><th className="p-3">Lokasi</th></tr></thead>
-                                    <tbody>
-                                        {logs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map((l,i)=>(
-                                            <tr key={i} className="border-b"><td className="p-3">{new Date(l.timestamp).toLocaleDateString()}</td><td className="p-3 font-medium">{l.name}</td><td className="p-3"><Badge type={l.type==='Masuk'?'success':'warning'}>{l.type}</Badge></td><td className="p-3">{new Date(l.timestamp).toLocaleTimeString()}</td><td className="p-3 text-gray-500">{l.location}</td></tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {view === 'permits' && (
-                         <div className="bg-white rounded-xl shadow border overflow-hidden">
-                             <table className="w-full text-sm text-left">
-                                 <thead className="bg-gray-50"><tr><th className="p-3">Nama</th><th className="p-3">Tipe</th><th className="p-3">Alasan</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr></thead>
-                                 <tbody>
-                                     {permits.map(p => (
-                                         <tr key={p.id} className="border-b"><td className="p-3 font-medium">{p.name}</td><td className="p-3">{p.type}</td><td className="p-3 text-gray-500 italic">{p.reason}</td>
-                                         <td className="p-3"><Badge type={p.status==='Approved'?'success':p.status==='Rejected'?'danger':'warning'}>{p.status}</Badge></td>
-                                         <td className="p-3">
-                                             {p.status==='Pending' && <div className="flex gap-2"><button onClick={()=>handlePermit(p.id, 'Approved')} className="text-green-600 hover:bg-green-50 p-1 rounded"><CheckCircle/></button><button onClick={()=>handlePermit(p.id, 'Rejected')} className="text-red-600 hover:bg-red-50 p-1 rounded"><XCircle/></button></div>}
-                                         </td></tr>
-                                     ))}
-                                 </tbody>
-                             </table>
-                         </div>
                     )}
                 </div>
             );
         }
 
-        // --- EMPLOYEE DASHBOARD (CLOUD) ---
-        function EmployeeDashboard({ user, logs, permits }) {
+        // --- DASHBOARD KARYAWAN ---
+        function EmployeeDashboard({ user, logs, permits, onAbsen, onPermit }) {
             const [view, setView] = useState('absen');
             const [photo, setPhoto] = useState(null);
             const [location, setLocation] = useState(null);
             const videoRef = useRef(null);
 
-            const myLogs = logs.filter(l => l.userId === user.id).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-            
             const startCamera = async () => {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 if(videoRef.current) videoRef.current.srcObject = stream;
@@ -465,99 +452,65 @@
                 canvas.height = videoRef.current.videoHeight;
                 canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
                 setPhoto(canvas.toDataURL('image/jpeg'));
-                // Get Loc
-                navigator.geolocation.getCurrentPosition(pos => {
-                    setLocation(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`);
-                });
+                navigator.geolocation.getCurrentPosition(
+                    pos => setLocation(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`),
+                    () => setLocation("Lokasi Tidak Terdeteksi")
+                );
             };
 
-            const sendAbsence = async (type) => {
-                if(!photo || !location) return alert("Tunggu lokasi & foto!");
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), {
-                    userId: user.id, name: user.name, type, timestamp: new Date().toISOString(),
-                    location, photo, status: 'Hadir'
-                });
-                alert(`Absen ${type} terkirim ke server!`);
+            const handleAbsen = (type) => {
+                if(!photo) return alert("Foto wajib diambil!");
+                const newLog = {
+                    id: Date.now(),
+                    userId: user.id,
+                    name: user.name,
+                    type: type,
+                    timestamp: new Date().toISOString(),
+                    location: location || 'Lokasi N/A',
+                    photo: photo,
+                    status: 'Hadir'
+                };
+                onAbsen(newLog);
+                alert(`Absen ${type} Berhasil! Data dikirim.`);
                 setPhoto(null);
-            };
-
-            const sendPermit = async (e) => {
-                e.preventDefault();
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'permits'), {
-                    id: Date.now(), userId: user.id, name: user.name, 
-                    type: e.target.type.value, reason: e.target.reason.value, 
-                    status: 'Pending', dateApplied: new Date().toISOString(),
-                    startDate: e.target.startDate.value, endDate: e.target.endDate.value
-                });
-                alert("Pengajuan terkirim!");
-                e.target.reset();
             };
 
             return (
                 <div className="max-w-xl mx-auto space-y-4">
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-2xl text-white shadow-lg">
+                    <div className="bg-blue-600 p-6 rounded-2xl text-white shadow-lg">
                         <h2 className="font-bold text-xl">Halo, {user.name} 👋</h2>
                         <p className="opacity-90">{user.department} • {user.location}</p>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                        {[{id:'absen',l:'Absen',i:Camera}, {id:'history',l:'Riwayat',i:Clock}, {id:'permit',l:'Izin',i:FileText}].map(t => (
-                            <button key={t.id} onClick={()=>setView(t.id)} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${view===t.id?'bg-blue-100 text-blue-700':'bg-white text-gray-600'}`}>
-                                <t.i/> <span className="text-xs font-bold">{t.l}</span>
-                            </button>
-                        ))}
+                    <div className="grid grid-cols-2 gap-2">
+                        <button onClick={()=>setView('absen')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${view==='absen'?'bg-blue-100 text-blue-700':'bg-white'}`}><Camera/><span className="text-xs font-bold">Absen</span></button>
+                        <button onClick={()=>setView('history')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${view==='history'?'bg-blue-100 text-blue-700':'bg-white'}`}><Clock/><span className="text-xs font-bold">Riwayat</span></button>
                     </div>
 
                     {view === 'absen' && (
                         <Card>
                             <div className="aspect-[4/3] bg-black rounded-lg overflow-hidden relative mb-4 flex items-center justify-center">
-                                {!photo ? (
-                                    <video ref={videoRef} autoPlay className="w-full h-full object-cover"></video>
-                                ) : <img src={photo} className="w-full h-full object-cover"/>}
+                                {!photo ? <video ref={videoRef} autoPlay className="w-full h-full object-cover"></video> : <img src={photo} className="w-full h-full object-cover"/>}
                                 {!photo && <div className="absolute bottom-4"><button onClick={takePhoto} className="w-14 h-14 bg-white rounded-full border-4 border-gray-200"></button></div>}
                             </div>
-                            {!photo ? <Button onClick={startCamera} className="w-full mb-2" variant="outline">Buka Kamera</Button> 
-                            : <div className="flex gap-2">
-                                <Button onClick={()=>sendAbsence('Masuk')} className="w-full" variant="success">Masuk</Button>
-                                <Button onClick={()=>sendAbsence('Pulang')} className="w-full" variant="danger">Pulang</Button>
-                              </div>
-                            }
+                            {!photo ? <Button onClick={startCamera} className="w-full" variant="outline">Buka Kamera</Button> : 
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button onClick={()=>handleAbsen('Masuk')} variant="success">Masuk</Button>
+                                <Button onClick={()=>handleAbsen('Pulang')} variant="danger">Pulang</Button>
+                            </div>}
                             {photo && <Button onClick={()=>setPhoto(null)} className="w-full mt-2" variant="outline">Ulang</Button>}
-                            <p className="text-center text-xs text-gray-400 mt-2">{location ? `Lokasi: ${location}` : 'Mengambil lokasi...'}</p>
+                            <p className="text-center text-xs text-gray-400 mt-2">{location ? `Lokasi: ${location}` : 'Menunggu lokasi...'}</p>
                         </Card>
                     )}
 
                     {view === 'history' && (
                         <div className="space-y-3">
-                            {myLogs.length===0 ? <p className="text-center text-gray-400 py-4">Belum ada riwayat</p> : 
-                            myLogs.map((l,i) => (
-                                <div key={i} className="bg-white p-4 rounded-xl border flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${l.type==='Masuk'?'bg-green-500':'bg-red-500'}`}><Clock size={18}/></div>
+                            {logs.filter(l=>l.userId===user.id).map((l,i)=>(
+                                <div key={i} className="bg-white p-3 rounded-lg border flex items-center justify-between">
                                     <div><p className="font-bold text-gray-800">{l.type}</p><p className="text-xs text-gray-500">{new Date(l.timestamp).toLocaleString()}</p></div>
+                                    <Badge type="success">Terkirim</Badge>
                                 </div>
                             ))}
-                        </div>
-                    )}
-
-                    {view === 'permit' && (
-                        <div className="space-y-4">
-                            <Card>
-                                <h3 className="font-bold mb-3">Form Izin</h3>
-                                <form onSubmit={sendPermit} className="space-y-3">
-                                    <select name="type" className="w-full p-2 border rounded"><option>Sakit</option><option>Cuti</option><option>Izin</option></select>
-                                    <div className="grid grid-cols-2 gap-2"><input type="date" name="startDate" className="w-full p-2 border rounded" required/><input type="date" name="endDate" className="w-full p-2 border rounded" required/></div>
-                                    <textarea name="reason" className="w-full p-2 border rounded" placeholder="Alasan..." required></textarea>
-                                    <Button className="w-full">Kirim</Button>
-                                </form>
-                            </Card>
-                            <div className="space-y-2">
-                                {permits.filter(p=>p.userId===user.id).map(p=>(
-                                    <div key={p.id} className="bg-white p-3 rounded-lg border flex justify-between items-center">
-                                        <div><p className="font-bold text-sm">{p.type}</p><p className="text-xs text-gray-500">{p.reason}</p></div>
-                                        <Badge type={p.status==='Approved'?'success':p.status==='Rejected'?'danger':'warning'}>{p.status}</Badge>
-                                    </div>
-                                ))}
-                            </div>
                         </div>
                     )}
                 </div>
