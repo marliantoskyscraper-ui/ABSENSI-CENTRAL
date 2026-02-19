@@ -45,11 +45,32 @@
         } from 'lucide-react';
 
         /**
-         * INITIAL DATA
+         * INITIAL DATA - AKUN DEMO (HANYA 2)
+         * Data ini akan dipaksa masuk ke LocalStorage saat reload untuk memperbaiki masalah login.
          */
         const INITIAL_USERS = [
-            { id: 1, name: 'Administrator', email: 'marliantoskyscraper@gmail.com', role: 'admin', password: 'abc12345', department: 'Management', position: 'Head Admin', location: 'PALANGKARAYA', phone: '-' },
-            { id: 2, name: 'Marlianto', email: 'marlianto@kantor.com', role: 'employee', password: 'marli123', department: 'PUPR', position: 'Staff', location: 'KOBAR', phone: '-' }
+            { 
+                id: 1, 
+                name: 'Administrator', 
+                email: 'marliantoskyscraper@gmail.com', 
+                role: 'admin', 
+                password: 'abc12345', 
+                department: 'Management', 
+                position: 'Head Admin', 
+                location: 'PALANGKARAYA', 
+                phone: '-' 
+            },
+            { 
+                id: 2, 
+                name: 'Marlianto', 
+                email: 'marlianto@kantor.com', 
+                role: 'employee', 
+                password: 'marli123', 
+                department: 'PUPR', 
+                position: 'Staff', 
+                location: 'KOBAR', 
+                phone: '-' 
+            }
         ];
 
         const INITIAL_ANNOUNCEMENTS = [
@@ -122,10 +143,9 @@
             const [permits, setPermits] = useState(() => JSON.parse(localStorage.getItem('app_permits')) || INITIAL_PERMITS);
             const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('app_config')) || INITIAL_CONFIG);
 
-            // --- FUNGSI UPDATE DATA & SYNC (DIPERBAIKI) ---
+            // --- FUNGSI UPDATE DATA & SYNC ---
             const updateData = (key, data) => {
                 const token = Date.now().toString();
-                // FIX: Update lastSyncToken lokal agar polling tidak menimpa data yang baru saja kita simpan
                 lastSyncToken.current = token; 
 
                 if (key === 'users') setUsers(data);
@@ -154,22 +174,42 @@
                 }
             };
 
-            // --- REAL-TIME SYNC ENGINE ---
+            // --- REAL-TIME SYNC & AUTO-FIX USER DATA ---
             useEffect(() => {
-                // Migrasi Admin (Pastikan Admin tidak hilang)
+                // LOGIKA PERBAIKAN AKUN (AUTO-FIX)
+                // Ini memastikan akun ID 1 dan ID 2 selalu sesuai dengan INITIAL_USERS
+                // mengatasi masalah "password diganti di kode tapi tidak bisa login"
                 const currentUsers = JSON.parse(localStorage.getItem('app_users')) || [];
-                const admin = currentUsers.find(u => u.id === 1);
-                const adminCode = INITIAL_USERS[0];
-                if (!admin || admin.email !== adminCode.email || admin.password !== adminCode.password) {
-                    const updatedUsers = [adminCode, ...currentUsers.filter(u => u.id !== 1)];
-                    if (!updatedUsers.find(u => u.id === 2)) updatedUsers.push(INITIAL_USERS[1]);
-                    updateData('users', updatedUsers);
+                let needsUpdate = false;
+                
+                // Salin users saat ini
+                let updatedUsersList = [...currentUsers];
+
+                // Cek User Wajib (ID 1 & 2)
+                INITIAL_USERS.forEach(initUser => {
+                    const existingIndex = updatedUsersList.findIndex(u => u.id === initUser.id);
+                    if (existingIndex !== -1) {
+                        // Jika user ada, cek apakah datanya beda (password/email update?)
+                        const existingUser = updatedUsersList[existingIndex];
+                        if (existingUser.email !== initUser.email || existingUser.password !== initUser.password || existingUser.name !== initUser.name) {
+                            updatedUsersList[existingIndex] = { ...existingUser, ...initUser }; // Update dengan data baru
+                            needsUpdate = true;
+                        }
+                    } else {
+                        // Jika user hilang, tambahkan kembali
+                        updatedUsersList.push(initUser);
+                        needsUpdate = true;
+                    }
+                });
+
+                if (needsUpdate) {
+                    console.log("Memperbarui data akun demo...");
+                    updateData('users', updatedUsersList);
                 }
 
-                // Polling Check
+                // Polling Check untuk Sync Antar Tab
                 const checkUpdates = () => {
                     const currentToken = localStorage.getItem('app_sync_token');
-                    // Hanya update jika token di storage berbeda dengan token terakhir yang kita tahu
                     if (currentToken && currentToken !== lastSyncToken.current) {
                         lastSyncToken.current = currentToken;
                         console.log("Syncing data from storage...");
@@ -201,22 +241,23 @@
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                // FIX: Gunakan trim() untuk menghapus spasi tidak sengaja
+                // Hapus spasi di awal/akhir email/password
                 const emailInput = loginData.email.trim().toLowerCase();
-                const user = users.find(u => u.email.toLowerCase() === emailInput && u.password === loginData.password);
+                const passInput = loginData.password.trim();
+
+                const user = users.find(u => u.email.toLowerCase() === emailInput && u.password === passInput);
                 
                 if (user) {
                     setCurrentUser(user);
                     sessionStorage.setItem('currentUser', JSON.stringify(user));
                     setAuthError('');
                 } else {
-                    setAuthError('Email atau password salah!');
+                    setAuthError('Email atau password salah! Coba tombol Reset di bawah jika yakin benar.');
                 }
             };
 
             const handleRegister = (e) => {
                 e.preventDefault();
-                // FIX: Gunakan trim() saat mendaftar
                 const emailInput = registerData.email.trim();
                 
                 if (users.find(u => u.email.toLowerCase() === emailInput.toLowerCase())) {
@@ -226,7 +267,7 @@
                 const newUser = { 
                     id: Date.now(), 
                     name: registerData.name, 
-                    email: emailInput, // Simpan email bersih
+                    email: emailInput, 
                     password: registerData.password, 
                     department: registerData.department, 
                     position: registerData.position, 
@@ -235,18 +276,13 @@
                     phone: '-' 
                 };
                 
-                // Simpan user baru
                 const newUsersList = [...users, newUser];
                 updateData('users', newUsersList);
-                
-                // Opsional: Kirim ke Google Sheets
                 pushToGoogleSheets({ name: newUser.name, type: 'Registrasi Baru', status: 'User', location: newUser.location, info: newUser.email });
 
                 setAuthError('');
-                // Auto-fill login dengan data baru
                 setLoginData({ email: emailInput, password: registerData.password });
                 alert('Pendaftaran Berhasil! Silakan klik Masuk.');
-                
                 setAuthView('login'); 
                 setRegisterData({ name: '', email: '', password: '', department: '', position: '', location: '' });
             };
@@ -273,7 +309,7 @@
             };
 
             const handleResetSystem = () => {
-                if(confirm("PERINGATAN: Reset sistem akan menghapus semua data. Lanjutkan?")) {
+                if(confirm("PERINGATAN: Ini akan mereset database ke awal (hanya menyisakan Admin & Marlianto). Data pendaftaran & absensi akan hilang. Lanjutkan?")) {
                     localStorage.clear(); sessionStorage.clear(); window.location.reload();
                 }
             }
@@ -308,6 +344,12 @@
                                     <div className="flex justify-end"><button type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); }} className="text-xs text-blue-600 hover:underline">Lupa Password?</button></div>
                                     <Button className="w-full mt-2">Masuk Sistem</Button>
                                     <div className="text-center mt-4"><p className="text-sm text-gray-600">Belum punya akun?</p><button type="button" onClick={() => { setAuthView('register'); setAuthError(''); }} className="text-blue-600 font-bold hover:underline text-sm mt-1 flex items-center justify-center gap-1 mx-auto"><UserPlus size={14}/> Daftar Karyawan Baru</button></div>
+                                    
+                                    <div className="text-center pt-4 border-t mt-4">
+                                        <button type="button" onClick={handleResetSystem} className="text-xs text-red-300 hover:text-red-500 flex items-center justify-center gap-1 mx-auto" title="Klik ini jika login gagal terus">
+                                            <RefreshCw size={10} /> Reset Database Awal
+                                        </button>
+                                    </div>
                                 </form>
                             )}
                             {authView === 'register' && (
