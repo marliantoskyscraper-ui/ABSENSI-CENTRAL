@@ -137,10 +137,30 @@
                     return saved ? JSON.parse(saved) : INITIAL_USERS;
                 } catch { return INITIAL_USERS; }
             });
-            const [logs, setLogs] = useState(() => JSON.parse(localStorage.getItem('app_logs')) || INITIAL_LOGS);
-            const [announcements, setAnnouncements] = useState(() => JSON.parse(localStorage.getItem('app_announcements')) || INITIAL_ANNOUNCEMENTS);
-            const [permits, setPermits] = useState(() => JSON.parse(localStorage.getItem('app_permits')) || INITIAL_PERMITS);
-            const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('app_config')) || INITIAL_CONFIG);
+            const [logs, setLogs] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('app_logs');
+                    return saved ? JSON.parse(saved) : INITIAL_LOGS;
+                } catch { return INITIAL_LOGS; }
+            });
+            const [announcements, setAnnouncements] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('app_announcements');
+                    return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
+                } catch { return INITIAL_ANNOUNCEMENTS; }
+            });
+            const [permits, setPermits] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('app_permits');
+                    return saved ? JSON.parse(saved) : INITIAL_PERMITS;
+                } catch { return INITIAL_PERMITS; }
+            });
+            const [config, setConfig] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('app_config');
+                    return saved ? JSON.parse(saved) : INITIAL_CONFIG;
+                } catch { return INITIAL_CONFIG; }
+            });
 
             // --- FUNGSI UPDATE DATA & SYNC ---
             const updateData = (key, data) => {
@@ -304,6 +324,7 @@
             }
 
             const manualSync = () => {
+                // Membaca ulang dari storage untuk memastikan data terbaru
                 setLogs(JSON.parse(localStorage.getItem('app_logs') || '[]'));
                 setUsers(JSON.parse(localStorage.getItem('app_users') || '[]'));
                 setPermits(JSON.parse(localStorage.getItem('app_permits') || '[]'));
@@ -471,19 +492,28 @@
             const takePhoto = () => { const video = videoRef.current; const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0); setPhoto(canvas.toDataURL('image/png')); video.srcObject.getTracks().forEach(track => track.stop()); setIsCameraOpen(false); };
             const getLocation = () => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition( (position) => setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }), () => alert("Gagal lokasi") ); } };
             useEffect(() => { if (activeTab === 'absen') getLocation(); }, [activeTab]);
+            
             const handleSubmitAttendance = (type) => { 
                 if (!location) return alert("Menunggu lokasi..."); if (!photo) return alert("Wajib foto!"); 
                 const newLog = { id: Date.now(), userId: user.id, name: user.name, type: type, timestamp: new Date().toISOString(), location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, photo: photo, status: 'Hadir' };
-                // GUNAKAN prevLogs UNTUK MEMASTIKAN DATA TERBARU
-                const currentLogs = Array.isArray(logs) ? logs : [];
-                updateData('logs', [newLog, ...currentLogs]); 
+                
+                // BACA LANGSUNG DARI STORAGE UNTUK MEMASTIKAN DATA TERBARU (Mencegah Overwrite)
+                const existingLogs = JSON.parse(localStorage.getItem('app_logs') || '[]');
+                const updatedLogs = [newLog, ...existingLogs];
+                
+                updateData('logs', updatedLogs); 
                 pushToGoogleSheets({ name: user.name, type: type, status: 'Hadir', location: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`, info: 'Selfie OK' });
                 setPhoto(null); alert(`Absen ${type} Berhasil!`); 
             };
+
             const handleSubmitPermit = (e) => { e.preventDefault(); 
                 const newPermit = { id: Date.now(), userId: user.id, name: user.name, type: permitForm.type, startDate: permitForm.startDate, endDate: permitForm.endDate, reason: permitForm.reason, status: 'Pending', dateApplied: new Date().toISOString() };
-                const currentPermits = Array.isArray(permits) ? permits : [];
-                updateData('permits', [newPermit, ...currentPermits]); 
+                
+                // BACA LANGSUNG DARI STORAGE
+                const existingPermits = JSON.parse(localStorage.getItem('app_permits') || '[]');
+                const updatedPermits = [newPermit, ...existingPermits];
+
+                updateData('permits', updatedPermits); 
                 pushToGoogleSheets({ name: user.name, type: 'Pengajuan Izin', status: 'Pending', location: '-', info: `${permitForm.type}: ${permitForm.reason}` });
                 setPermitForm({ type: 'Sakit', startDate: '', endDate: '', reason: '' }); alert("Pengajuan berhasil dikirim!"); 
             };
